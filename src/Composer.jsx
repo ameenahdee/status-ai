@@ -97,7 +97,12 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           429: 'The available AI usage limit has been reached. Please try again later, or explore the sample report.',
           504: 'The AI service took too long to respond. Please try again, or explore the sample report.',
         }
-        throw new Error(friendly[res.status] || data.error || 'Something went wrong generating your report. Please try again.')
+        // A deliberately disabled feature gets the server's own explanation, not the generic "busy" text
+        throw new Error(
+          data.code === 'DISABLED'
+            ? data.error
+            : friendly[res.status] || data.error || 'Something went wrong generating your report. Please try again.',
+        )
       }
       setDraft({ content: data.report, original: data.original, generatedAt: new Date().toISOString(), isSample: false })
       setStatus(project.status || '')
@@ -182,6 +187,15 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           <textarea rows={9} value={updates} onChange={(e) => setUpdates(e.target.value)} maxLength={12000}
             placeholder="Paste your rough update exactly as it is: done, in progress, blocked, worries, what's next…" />
         </label>
+        <p className="info privacy-note" role="note">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" />
+            <path d="M8 7.2v4M8 4.6v.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+          <span>
+            <strong>Privacy:</strong> “Generate report” sends your update, project name, description, audience and reporting period to Google’s Gemini API. Please don’t include confidential, personal or client-sensitive information. Depending on Google’s terms for the service tier in use, submitted content may be retained and used to improve Google’s products. The sample report sends nothing.
+          </span>
+        </p>
         <div className="actions">
           <button className="primary" onClick={generate} disabled={loading || updates.trim().length < 10}>
             {loading && <span className="spinner" aria-hidden="true" />}

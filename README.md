@@ -35,7 +35,7 @@ Status AI is deliberately **not** a project management platform. Projects exist 
 
 ### Prerequisites
 
-- Node.js and npm
+- Node.js 22.12 or newer, and npm
 - A Gemini API key from [Google AI Studio](https://aistudio.google.com/)
 
 ### Install and configure
@@ -84,6 +84,8 @@ All configuration is read on the server from environment variables.
 | `GEMINI_TIMEOUT_MS` | `45000` | How long to wait for Gemini before returning a timeout error. |
 | `AI_PROVIDER` | `gemini` | Which provider implementation to use. |
 | `PORT` | `3001` | Server port. |
+| `DAILY_REQUEST_CAP` | `200` | Global cap on live AI generations per UTC day, shared by all visitors, to protect the free quota. |
+| `LIVE_GENERATION_ENABLED` | on outside production, **off** in production | Live generation sends visitor text to Google, so when `NODE_ENV=production` it must be switched on explicitly with `true`. When off, the API returns a clear message and the sample report and demo workspace still work. |
 
 ## Architecture
 
@@ -100,6 +102,7 @@ src/                 React app (hash-routed, no router dependency)
   pdf.js, exporters.js   PDF, copy and email-draft output
 server/
   index.js           Express API: POST /api/report, validation, rate limiting, errors
+  limits.js          Per-IP rate limiter (with pruning) and global daily cap
   prompt.js          System prompt and section definitions
   providers/
     index.js         Provider selection (AI_PROVIDER)
@@ -110,7 +113,7 @@ server/
 
 **Data model.** Projects and reports are stored under one `localStorage` key (`statusai.v1`). Records have stable UUIDs, ISO timestamps, the original submitted update, and the reporting period, so they can later move to a database without reshaping.
 
-**API behaviour.** `POST /api/report` validates input (length limits, date format), applies a simple per-IP rate limit (8 requests per minute, in memory), enforces a provider timeout, and maps provider failures to friendly messages (busy, usage limit reached, timeout). Technical details and credentials are never returned to the browser.
+**API behaviour.** `POST /api/report` validates input (length limits, date format), applies a per-IP rate limit (8 requests per minute, in memory, idle entries pruned) and a global daily cap, enforces a provider timeout, and maps provider failures to friendly messages (busy, usage limit reached, timeout). Technical details and credentials are never returned to the browser.
 
 ## Data and privacy
 
@@ -121,7 +124,11 @@ server/
 
 ## Deployment notes
 
-The app builds to a single Node service. On any Node host, run `npm run build` then `npm start`, and set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) as environment variables on the host. Never place the key in the repository or the frontend. The in-memory rate limiter is per process; use a shared store if you run multiple instances.
+The app builds to a single Node service. On any Node host, run `npm run build` then `npm start`, and set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`) as environment variables on the host. Never place the key in the repository or the frontend. The in-memory limiters are per process; use a shared store if you run multiple instances.
+
+The server sends basic security headers (including a Content Security Policy that allows only this origin and Google Fonts), hides the Express banner, marks API responses `no-store`, and caches hashed build assets for a year while always revalidating HTML. The HTTP `Strict-Transport-Security` header is sent only for HTTPS requests. Responses are not compressed by the app; rely on the host or CDN for that.
+
+**Before exposing live generation publicly**, review Google's current Gemini API terms for your service tier (including age requirements and how submitted content may be used) and put an appropriate operating arrangement in place. Until then, leave `LIVE_GENERATION_ENABLED` unset in production: visitors can still use the sample report and demo workspace.
 
 ## Known limitations
 
