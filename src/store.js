@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { buildDemo } from './demo.js'
+import { findReportForPeriod, DUPLICATE_PERIOD_MESSAGE } from './history.js'
 import {
   CURRENT_VERSION, STATUSES, STATUS_CHANGE_SOURCES, emptyState, storedVersion, migrateV1toV2, isObject, isIsoTimestamp,
   validContent, validProject, validReportV1, validReportV2, validHistoryEntry, cleanGeneration,
@@ -16,6 +17,17 @@ const SET_ASIDE_KEY = 'statusai.v1.set-aside'
 const PRE_MIGRATION_KEY = 'statusai.v1.pre-v2'
 export { STATUSES }
 export const DESCRIPTION_MAX = 500
+
+// Thrown by addReport when the project already has a saved report for exactly this reporting period.
+// The existing report is never changed or replaced; `existingReportId` says which one it is.
+export class DuplicatePeriodError extends Error {
+  constructor(existingReportId) {
+    super(DUPLICATE_PERIOD_MESSAGE)
+    this.name = 'DuplicatePeriodError'
+    this.code = 'DUPLICATE_PERIOD'
+    this.existingReportId = existingReportId
+  }
+}
 // One rule for every write path, so the limit never depends on which form or caller was used.
 const capDescription = (d) => d.trim().slice(0, DESCRIPTION_MAX)
 
@@ -263,6 +275,10 @@ export const actions = {
   addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, generatedContent, generatedAt, generation, assessment, whatsChanged, generatedWhatsChanged, projectStatusAtReport }) {
     if (!isFinalStatus(projectStatusAtReport))
       throw new Error('A report cannot be saved until the project status has been finalised (On Track, At Risk, Blocked or Off Track).')
+    // One saved report per project and identical period. Checked here, against the live state at the moment of
+    // saving, so it also covers a report saved while this one was being generated. Nothing is overwritten.
+    const duplicate = findReportForPeriod(state, { projectId, periodStart, periodEnd })
+    if (duplicate) throw new DuplicatePeriodError(duplicate.id)
     const generatedAtValue = isIsoTimestamp(generatedAt) ? generatedAt : null // never substituted with the save time
     const aiOutput = validContent(generatedContent) ? structuredClone(generatedContent) : null
     const generationValue = cleanGeneration(generation)

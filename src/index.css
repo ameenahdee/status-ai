@@ -85,6 +85,10 @@ button{font:inherit;font-size:15px;font-weight:600;padding:10px 16px;border-radi
 button:active:not(:disabled){transform:scale(.98)}
 .primary{background:var(--plum);color:#fff}
 .primary:hover:not(:disabled){background:var(--plum-hover);box-shadow:0 2px 8px rgba(53,16,68,.25)}
+a.linkbtn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;font-size:15px;font-weight:600;padding:10px 16px;border-radius:10px;border:1px solid var(--plum);min-height:44px;text-decoration:none;text-align:center}
+a.linkbtn.primary,a.linkbtn.primary:hover{color:#fff}
+.dup-notice{margin:14px 0 0}
+.dup-notice p{margin:0 0 10px;overflow-wrap:anywhere}
 .ghost{border-color:var(--line)}
 .ghost:hover:not(:disabled){border-color:var(--pink);background:var(--bg)}
 .ghost.danger,.danger-btn{color:#B3261E}

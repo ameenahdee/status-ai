@@ -289,7 +289,7 @@ describe('the comparison in the saved report', () => {
 
   it('still needs a finalised status, and keeps every other part of the report', () => {
     assert.throws(() => save({ projectStatusAtReport: '', whatsChanged: compared() }), /finalised/)
-    const r = save({ whatsChanged: compared(), projectStatusAtReport: 'Off Track' })
+    const r = save({ whatsChanged: compared(), projectStatusAtReport: 'Off Track', periodStart: '2026-11-01', periodEnd: '2026-11-07' })
     const s = saved(r.id)
     assert.equal(isFinalStatus(s.projectStatusAtReport), true)
     assert.equal(s.originalUpdate, reportInput(project.id).originalUpdate)

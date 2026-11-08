@@ -600,3 +600,17 @@ Trigger: the user reported that a second saved report displayed "No previous rep
 ### 12.15 Environment and working notes for the next session
 - Windows 11; PowerShell and a Bash tool (Git Bash). The Bash tool mangles backslashes and some quotes inside heredocs: write scripts and regexes with the Write tool, or use String.raw in small Node scripts, then run them. The Edit tool requires a prior Read of the file. Project path has spaces (OneDrive - Omniswift Limited). Edge for browser checks is at C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe. Do not kill all browser processes (blocked, and it would affect the user's own browser).
 - The user wants: honest reporting (say plainly when something was not run or not done), stakeholder-facing exports free of AI internals, sample/demo content never presented as live AI output, the approved compact desktop design preserved, and responsiveness checked on every change. The user's own name appears in their reference screenshots; never hardcode it into the product.
+
+## 13. Duplicate-period guard (built after section 12; committed locally on top of the dashboard commit, not pushed)
+
+Rule: a project can have only ONE saved real report for an identical period (same project id, same periodStart, same periodEnd). Different periods (including overlapping ones), other projects, demo reports and sample copies are not affected. Overlap handling in history.js is unchanged.
+
+Where it lives (one definition, two enforcement points):
+- src/history.js: findReportForPeriod(state, {projectId, periodStart, periodEnd, excludeId}) and DUPLICATE_PERIOD_MESSAGE (the exact product wording).
+- src/store.js: addReport throws DuplicatePeriodError (code DUPLICATE_PERIOD, existingReportId) BEFORE changing or writing anything, using the live state at save time. Nothing is overwritten. updateReportContent and updateReportStatus never touch periods, so editing is never blocked.
+- src/Composer.jsx: as soon as a project and a complete period match an existing report, it shows the message with "Open existing report" (#/reports/<id>) and "Delete existing report" (existing ConfirmDialog); Generate and Save are disabled, and generate() itself refuses, so no AI request is made. Save re-checks and also catches DuplicatePeriodError from the store. Sample generation is not blocked.
+- Existing stored duplicates are left untouched (no auto-delete); comparisonBaselineFor still handles them.
+
+Tests: test/duplicate-period.test.mjs (20). test/helpers/fixtures.mjs reportInput now moves its default period on by one week per report built for the same project (the first stays 2026-11-01..07), because the old fixture saved many reports with identical dates; two tests (health-movement, whats-changed-report) were adjusted to match. Mutation check: disabling the store guard fails 4 of the new tests.
+Verified: npm test 814/814, lint clean, build passes, npm run check:responsive clean (10 sizes x 7 pages), browser check against the Gemini stub 35/35 (save first report via UI; same period blocked before generation with zero AI requests; other project and overlapping period allowed; edit existing; delete then replace; draft moved onto a taken period blocks Save; notice fits at 9 sizes). The browser script is in the session scratchpad, not the repo.
+Not done: a PM-only hint explaining WHY a comparison shows "No previous report" (first report / earlier period / other project); the stakeholder sentence is unchanged.

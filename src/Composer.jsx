@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useStore, actions, STATUSES } from './store.js'
+import { useStore, actions, STATUSES, DuplicatePeriodError } from './store.js'
 import { navigate, scrollToId } from './router.js'
 import { fmtPeriod, fmtStamp, stakeholderChanges } from './sections.js'
-import { comparisonBaselineFor } from './history.js'
+import { comparisonBaselineFor, findReportForPeriod, DUPLICATE_PERIOD_MESSAGE } from './history.js'
 import WhatsChanged from './WhatsChanged.jsx'
-import { ReportBody, ExportButtons, StatusBadge } from './ui.jsx'
+import { ReportBody, ExportButtons, StatusBadge, ConfirmDialog } from './ui.jsx'
 import { isFinalStatus, computeHealthMovement } from './schema.js'
 import SaveCopyDialog from './SaveCopy.jsx'
 import AssessmentPanel from './Assessment.jsx'
@@ -19,6 +19,20 @@ function buildWhatsChanged(baseline, server) {
     return { status: 'compared', baseline: { reportId: b.id, periodStart: b.periodStart, periodEnd: b.periodEnd }, notes: baseline.notes, items: server.items }
   }
   return { status: 'unavailable', ...empty }
+}
+
+// Shown when the project already has a saved report for exactly this reporting period. Nothing is generated or
+// saved until the PM opens (and edits) that report, deletes it, or picks a different project or period.
+function DuplicateNotice({ report, onDelete }) {
+  return (
+    <div className="notice dup-notice" role="alert" data-testid="duplicate-period">
+      <p>{DUPLICATE_PERIOD_MESSAGE}</p>
+      <div className="actions">
+        <a className="primary linkbtn" href={`#/reports/${report.id}`}>Open existing report</a>
+        <button type="button" className="ghost danger" onClick={onDelete}>Delete existing report</button>
+      </div>
+    </div>
+  )
 }
 
 const STATUS_REQUIRED = 'Choose the final project status before saving or sharing this report.'
@@ -45,11 +59,15 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const project = store.projects.find((p) => p.id === projectId)
   // Sample generation applies only while the box still holds the prepared fictional update; once the
   // visitor edits it, the pre-written report would no longer match, so we fall back to live generation.
   const sampleInput = sampleLoaded && updates === SAMPLE_SCENARIO.update
+  // A saved report for this exact project and period already exists: no live generation and no saving a second one.
+  // (Sample generations send nothing and are saved as demo copies, which never count.)
+  const existing = !sampleInput && project ? findReportForPeriod(store, { projectId: project.id, periodStart, periodEnd }) : null
 
   function periodError() {
     if (!periodStart || !periodEnd) return 'Please enter both the reporting period start and end dates.'
@@ -65,6 +83,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
   async function generate() {
     const err = !project ? 'Please choose a project for this report.' : periodError()
     if (err) return setError(err)
+    if (existing) return setError(DUPLICATE_PERIOD_MESSAGE) // no AI call is made for a period that is already reported
     setError('')
     setLoading(true)
     try {
@@ -144,22 +163,31 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
     const stale = !draft.isSample && draft.comparedFor && (draft.comparedFor.projectId !== project?.id || draft.comparedFor.periodStart !== periodStart || draft.comparedFor.periodEnd !== periodEnd)
     const err = !project ? 'Choose a project above to save this report to.' : !isFinalStatus(status) ? STATUS_REQUIRED : stale ? 'The project or reporting period changed after this report was generated, so its comparison with the previous report no longer matches. Generate the report again.' : periodError()
     if (err) return setSaveError(err)
+    if (existing) return setSaveError(DUPLICATE_PERIOD_MESSAGE)
     setSaveError('')
-    const report = actions.addReport({
-      projectId: project.id,
-      title: draft.content.title || 'Project Status Report',
-      originalUpdate: draft.original,
-      periodStart,
-      periodEnd,
-      content: draft.content,
-      generatedContent: draft.generated,
-      generatedAt: draft.generatedAt,
-      generation: draft.generation,
-      assessment: draft.assessment,
-      whatsChanged: draft.whatsChanged,
-      generatedWhatsChanged: draft.generatedWhatsChanged,
-      projectStatusAtReport: status,
-    })
+    let report
+    try {
+      report = actions.addReport({
+        projectId: project.id,
+        title: draft.content.title || 'Project Status Report',
+        originalUpdate: draft.original,
+        periodStart,
+        periodEnd,
+        content: draft.content,
+        generatedContent: draft.generated,
+        generatedAt: draft.generatedAt,
+        generation: draft.generation,
+        assessment: draft.assessment,
+        whatsChanged: draft.whatsChanged,
+        generatedWhatsChanged: draft.generatedWhatsChanged,
+        projectStatusAtReport: status,
+      })
+    } catch (e) {
+      // The store checks the live data at the moment of saving, so a duplicate that appeared while the report was
+      // being generated is refused here too. Nothing was saved or overwritten.
+      if (e instanceof DuplicatePeriodError) return setSaveError(e.message)
+      throw e
+    }
     // Only the PM's choice changes the project's status. Choosing the AI's recommended status is recorded as
     // 'ai-confirmed'; anything else the PM chose is recorded as set from this report.
     if (status && status !== project.status) {
@@ -244,7 +272,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           <button
             className="primary"
             onClick={sampleInput ? generateSample : generate}
-            disabled={sampleInput ? false : loading || updates.trim().length < 10}
+            disabled={sampleInput ? false : loading || updates.trim().length < 10 || !!existing}
           >
             {loading && <span className="spinner" aria-hidden="true" />}
             {loading ? 'Generating…' : sampleInput ? 'Generate sample report' : 'Generate report'}
@@ -253,6 +281,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
             Try a Sample Generation
           </button>
         </div>
+        {existing && <DuplicateNotice report={existing} onDelete={() => setConfirmDelete(true)} />}
         {loading && (
           <p className="loading-note" role="status">
             Generating your report with the AI service. This can take several seconds; your update is not lost if it fails.
@@ -270,7 +299,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
               <span className="faint"> · editable</span>
             </h2>
             <div className="actions">
-              {!draft.isSample && <button className="primary" onClick={save} disabled={!finalised} title={finalised ? undefined : STATUS_REQUIRED}>Save Report</button>}
+              {!draft.isSample && <button className="primary" onClick={save} disabled={!finalised || !!existing} title={finalised ? undefined : STATUS_REQUIRED}>Save Report</button>}
               {draft.isSample && <button className="primary" onClick={() => setCopying(true)}>Save a Copy</button>}
               <ExportButtons content={draft.content} meta={meta} disabledReason={notFinal ? STATUS_REQUIRED : ''} />
             </div>
@@ -313,10 +342,19 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
                 </p>
               )}
               {!finalised && <p className="faint" role="status">{STATUS_REQUIRED}</p>}
-              <button className="primary" onClick={save} disabled={!finalised}>Save Report</button>
+              {existing && <DuplicateNotice report={existing} onDelete={() => setConfirmDelete(true)} />}
+              <button className="primary" onClick={save} disabled={!finalised || !!existing}>Save Report</button>
             </div>
           )}
         </section>
+      )}
+      {confirmDelete && existing && (
+        <ConfirmDialog
+          title="Delete the existing report?"
+          message={`“${existing.title}” will be permanently removed from this browser so you can create a new report for this period. This cannot be undone.`}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => { actions.deleteReport(existing.id); setConfirmDelete(false) }}
+        />
       )}
       {copying && draft?.isSample && (
         <SaveCopyDialog

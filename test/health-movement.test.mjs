@@ -171,9 +171,14 @@ describe('in stored data', () => {
   const saved = (id) => persisted().reports.find((r) => r.id === id)
   const ASSESSMENT = (outcome) => ({ outcome, explanation: 'Because.', evidence: [{ source: 'update', quote: 'some quote here' }], missingInformation: [] })
   const first = (status, over = {}) => store.actions.addReport(reportInput(project.id, { periodStart: '2026-10-01', periodEnd: '2026-10-07', projectStatusAtReport: status, ...over }))
-  const second = (status, baselineId, over = {}) =>
-    store.actions.addReport(reportInput(project.id, { periodStart: '2026-10-08', periodEnd: '2026-10-14', projectStatusAtReport: status,
+  // each call is a later week than the last, because one project cannot hold two reports for the same period
+  let laterWeeks = 0
+  const second = (status, baselineId, over = {}) => {
+    const shift = (day, w) => new Date(Date.parse(`${day}T00:00:00Z`) + w * 7 * 86_400_000).toISOString().slice(0, 10)
+    const n = laterWeeks++
+    return store.actions.addReport(reportInput(project.id, { periodStart: shift('2026-10-08', n), periodEnd: shift('2026-10-14', n), projectStatusAtReport: status,
       whatsChanged: compared({ baseline: { reportId: baselineId, periodStart: '2026-10-01', periodEnd: '2026-10-07' } }), generatedWhatsChanged: compared(), ...over }))
+  }
 
   it('is computed from the previous report\'s finalised status and the status finalised now', () => {
     const a = first('On Track')

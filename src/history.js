@@ -126,6 +126,22 @@ export function comparisonBaselineFor(state, target) {
   return { status: 'found', report: res.report, notes, reason: null }
 }
 
+// ONE active saved report per project for an identical reporting period (same project, same start, same end).
+// Only real reports count: demo reports and sample copies are illustrative and never block anything. Overlapping
+// but different periods are allowed. This is the single definition of "duplicate", used by the store (which enforces
+// it when saving) and the composer (which warns before generating).
+export const DUPLICATE_PERIOD_MESSAGE =
+  'A report already exists for this project and reporting period. You can edit the existing report or delete it before creating another.'
+
+export function findReportForPeriod(state, { projectId, periodStart, periodEnd, excludeId = null }) {
+  if (!projectId || !isIsoDay(periodStart) || !isIsoDay(periodEnd)) return null
+  return (
+    state.reports.find(
+      (r) => r.id !== excludeId && r.projectId === projectId && isHistoryEligible(r) && r.periodStart === periodStart && r.periodEnd === periodEnd,
+    ) ?? null
+  )
+}
+
 // Whether the report a status-history entry refers to can still be opened.
 //   'none'         the entry was not tied to a report (for example a manual change)
 //   'available'    the report exists

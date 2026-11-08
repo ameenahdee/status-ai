@@ -32,18 +32,27 @@ export const projectInput = (over = {}) => ({
 // What the app passes when saving a live AI report: the AI output as generated, the (possibly edited) content,
 // and the time the AI generated it (which is NOT the time of saving).
 export const GENERATED_AT = '2026-11-08T08:30:00.000Z'
-export const reportInput = (projectId, over = {}) => ({
+// A project can hold only one saved report per identical period, so the default period moves on by one week for each
+// further report built for the same project (the first is 2026-11-01..2026-11-07). Pass periodStart/periodEnd to
+// choose one explicitly, for example to test duplicates.
+const built = new Map()
+const weekAfter = (day, weeks) => new Date(Date.parse(`${day}T00:00:00Z`) + weeks * 7 * 86_400_000).toISOString().slice(0, 10)
+export const reportInput = (projectId, over = {}) => {
+  const n = built.get(projectId) ?? 0
+  built.set(projectId, n + 1)
+  return {
   projectId,
   title: 'Weekly Status Report',
   originalUpdate: 'raw notes: finished login, dashboard 60%, payments blocked',
-  periodStart: '2026-11-01',
-  periodEnd: '2026-11-07',
+  periodStart: weekAfter('2026-11-01', n),
+  periodEnd: weekAfter('2026-11-07', n),
   content: content(),
   generatedContent: content(),
   generatedAt: GENERATED_AT,
   projectStatusAtReport: 'At Risk',
   ...over,
-})
+  }
+}
 
 // Records exactly as version 1 of the app stored them (before this data-model change), for migration tests.
 export const v1Project = (over = {}) => ({
