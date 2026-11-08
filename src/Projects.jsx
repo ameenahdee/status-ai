@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore, actions, reportsFor, hasDemo, STATUSES } from './store.js'
 import { navigate } from './router.js'
-import { fmtDate, fmtPeriod, fmtStamp, todayStr } from './sections.js'
+import { fmtDate, fmtPeriod, fmtStamp, todayStr, dateLabel } from './sections.js'
 import { Modal, ConfirmDialog, StatusBadge, ReportCard, EmptyState, DemoBadge } from './ui.jsx'
 
 const PAGE_SIZE = 6
@@ -103,6 +103,7 @@ export function ProjectsPage() {
 
   const demoProjects = store.projects.filter((p) => p.demo)
   const demoReports = store.reports.filter((r) => r.demo)
+  const sampleCopies = demoReports.filter((r) => r.sampleCopy).length
   const keptOnReset = demoProjects.filter((p) => store.reports.some((r) => !r.demo && r.projectId === p.id)).length
 
   function loadDemo() {
@@ -174,7 +175,7 @@ export function ProjectsPage() {
         <ConfirmDialog
           title="Reset demo workspace?"
           confirmLabel="Reset demo"
-          message={`This removes the ${demoProjects.length - keptOnReset} demo projects and ${demoReports.length} demo reports. Projects and reports you created are not affected.${keptOnReset ? ` ${keptOnReset} demo project${keptOnReset === 1 ? '' : 's'} containing reports you saved will be kept as normal project${keptOnReset === 1 ? '' : 's'}.` : ''}`}
+          message={`This removes the ${demoProjects.length - keptOnReset} demo projects and ${demoReports.length} demo reports${sampleCopies ? `, including ${sampleCopies} sample ${sampleCopies === 1 ? 'copy' : 'copies'} you saved` : ''}. Projects and reports you created are not affected.${keptOnReset ? ` ${keptOnReset} demo project${keptOnReset === 1 ? '' : 's'} containing reports you saved will be kept as normal project${keptOnReset === 1 ? '' : 's'}.` : ''}`}
           onCancel={() => setConfirmReset(false)}
           onConfirm={() => {
             const r = actions.resetDemo()
@@ -219,7 +220,7 @@ export function ProjectWorkspace({ id }) {
           {p.audience && <div><dt>Audience</dt><dd>{p.audience}</dd></div>}
           <div>
             <dt>Latest report</dt>
-            <dd>{latest ? <><a href={`#/reports/${latest.id}`}>{fmtPeriod(latest.periodStart, latest.periodEnd)}</a> · generated {fmtStamp(latest.generatedAt)}</> : 'No reports yet'}</dd>
+            <dd>{latest ? <><a href={`#/reports/${latest.id}`}>{fmtPeriod(latest.periodStart, latest.periodEnd)}</a> · {dateLabel(latest).toLowerCase()} {fmtStamp(latest.generatedAt)}</> : 'No reports yet'}</dd>
           </div>
         </dl>
         <div className="statusrow">

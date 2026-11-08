@@ -71,7 +71,7 @@ app.post('/api/report', async (req, res) => {
   if (!liveEnabled)
     return res.status(503).json({
       code: 'DISABLED',
-      error: 'Live report generation is not enabled in this demo. You can still explore the sample report and the demo workspace.',
+      error: 'Live report generation is not enabled in this demo. You can still try a sample generation, explore the sample report and the demo workspace.',
     })
   if (!provider) return res.status(503).json({ error: 'AI service is not configured.' })
   if (ipLimiter.check(req.ip)) return res.status(429).json({ error: 'Too many requests. Please wait a minute.' })

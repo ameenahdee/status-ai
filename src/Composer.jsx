@@ -3,45 +3,13 @@ import { useStore, actions, STATUSES } from './store.js'
 import { navigate, scrollToId } from './router.js'
 import { fmtPeriod, fmtStamp } from './sections.js'
 import { ReportBody, ExportButtons, StatusBadge } from './ui.jsx'
+import SaveCopyDialog from './SaveCopy.jsx'
+import { SAMPLE_SCENARIO, samplePeriod } from './samples.js'
 
-const SAMPLE_UPDATE =
-  "Finished the login API and unit tests. Dashboard UI about 60% done, waiting on final icons from design. Payment integration blocked - vendor sandbox keys still not received after 2 weeks. QA found 3 flaky tests in checkout. Launch date of the 15th might slip if keys don't arrive. Next: finish dashboard, start reporting module, chase vendor."
-
-const SAMPLE_REPORT = {
-  title: 'Customer Portal – Weekly Status Report',
-  executiveSummary:
-    'The Customer Portal project is progressing but at risk of missing the 15th launch date. Core login functionality is complete and the dashboard is roughly 60% built. Payment integration is blocked because the vendor has not supplied sandbox keys after two weeks, and this is the main threat to the schedule.',
-  completedActivities: [
-    'Login API completed and unit tested',
-    'QA cycle on checkout completed, with three flaky tests identified',
-  ],
-  workInProgress: [
-    'Dashboard UI is approximately 60% complete, pending final icons from design',
-    'Investigation of the three flaky checkout tests',
-  ],
-  blockers: [
-    'Payment integration blocked: vendor sandbox keys not received after two weeks',
-    'Dashboard completion waiting on final icons from the design team',
-  ],
-  risks: [
-    'The 15th launch date may slip if the vendor sandbox keys are not received soon',
-    'Flaky checkout tests may hide defects if left unresolved before launch',
-  ],
-  nextSteps: [
-    'Finish the dashboard UI once icons are delivered',
-    'Start the reporting module',
-    'Chase the vendor for sandbox keys',
-  ],
-  executiveActionRequired: [
-    'Escalate to the vendor’s senior contact to secure the sandbox keys this week',
-    'Confirm whether the 15th launch date is fixed or can move if the keys are delayed',
-  ],
-}
-
-// Pure client-side: no network, no backend, no Gemini
+// Pure client-side: no network, no backend, no Gemini. structuredClone keeps the original scenario unchanged.
 const makeSampleDraft = () => ({
-  content: structuredClone(SAMPLE_REPORT),
-  original: SAMPLE_UPDATE,
+  content: structuredClone(SAMPLE_SCENARIO.report),
+  original: SAMPLE_SCENARIO.update,
   generatedAt: new Date().toISOString(),
   isSample: true,
 })
@@ -49,16 +17,22 @@ const makeSampleDraft = () => ({
 export default function Composer({ projectId: fixedProjectId, sample = false }) {
   const store = useStore()
   const [projectId, setProjectId] = useState(fixedProjectId || '')
-  const [periodStart, setPeriodStart] = useState('')
-  const [periodEnd, setPeriodEnd] = useState('')
-  const [updates, setUpdates] = useState(sample ? SAMPLE_UPDATE : '')
-  const [draft, setDraft] = useState(sample ? makeSampleDraft : null) // { content, original, generatedAt, isSample }
+  const [periodStart, setPeriodStart] = useState(sample ? samplePeriod().periodStart : '')
+  const [periodEnd, setPeriodEnd] = useState(sample ? samplePeriod().periodEnd : '')
+  const [updates, setUpdates] = useState(sample ? SAMPLE_SCENARIO.update : '')
+  const [sampleLoaded, setSampleLoaded] = useState(sample) // the prepared fictional update has been loaded
+  const [copying, setCopying] = useState(false) // Save a Copy dialog
+  // ?sample=1 only pre-loads the fictional update; the report appears once the visitor submits it
+  const [draft, setDraft] = useState(null) // { content, original, generatedAt, isSample }
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
 
   const project = store.projects.find((p) => p.id === projectId)
+  // Sample generation applies only while the box still holds the prepared fictional update; once the
+  // visitor edits it, the pre-written report would no longer match, so we fall back to live generation.
+  const sampleInput = sampleLoaded && updates === SAMPLE_SCENARIO.update
 
   function periodError() {
     if (!periodStart || !periodEnd) return 'Please enter both the reporting period start and end dates.'
@@ -120,10 +94,23 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
     }
   }
 
-  // Sample mode never calls the backend or Gemini
-  function showSample() {
+  // "Try a Sample Generation", step 1: load the fictional update so the visitor can review it.
+  // Nothing is generated yet, and nothing is sent anywhere.
+  function trySampleGeneration() {
     setError('')
-    setUpdates(SAMPLE_UPDATE)
+    setUpdates(SAMPLE_SCENARIO.update)
+    setSampleLoaded(true)
+    setDraft(null)
+    if (!periodStart && !periodEnd) {
+      const p = samplePeriod()
+      setPeriodStart(p.periodStart)
+      setPeriodEnd(p.periodEnd)
+    }
+  }
+
+  // Step 2: show the pre-written report that corresponds to that update. No fetch, no Gemini.
+  function generateSample() {
+    setError('')
     setDraft(makeSampleDraft())
     scrollToId('draft')
   }
@@ -164,7 +151,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
 
       {store.projects.length === 0 && (
         <div className="notice">
-          Reports are saved to a project. <a href="#/projects">Create a project</a> first, or try the sample report below.
+          Reports are saved to a project. <a href="#/projects">Create a project</a> first, or try a sample generation below.
         </div>
       )}
 
@@ -187,21 +174,33 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           <textarea rows={9} value={updates} onChange={(e) => setUpdates(e.target.value)} maxLength={12000}
             placeholder="Paste your rough update exactly as it is: done, in progress, blocked, worries, what's next…" />
         </label>
-        <p className="info privacy-note" role="note">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" />
-            <path d="M8 7.2v4M8 4.6v.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-          </svg>
-          <span>
-            <strong>Privacy:</strong> “Generate report” sends your update, project name, description, audience and reporting period to Google’s Gemini API. Please don’t include confidential, personal or client-sensitive information. Depending on Google’s terms for the service tier in use, submitted content may be retained and used to improve Google’s products. The sample report sends nothing.
-          </span>
-        </p>
+        {sampleInput ? (
+          <div className="preview-note demo-note" role="note">
+            <strong>Demo experience · fictional input.</strong> This is a prepared sample update. “Generate sample report” shows a pre-written, illustrative report for it. Nothing is sent to Gemini or any server.
+          </div>
+        ) : (
+          <p className="info privacy-note" role="note">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.4" />
+              <path d="M8 7.2v4M8 4.6v.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            <span>
+              <strong>Privacy:</strong> “Generate report” sends your update, project name, description, audience and reporting period to Google’s Gemini API. Please don’t include confidential, personal or client-sensitive information. Depending on Google’s terms for the service tier in use, submitted content may be retained and used to improve Google’s products. Sample generations and sample reports send nothing.
+            </span>
+          </p>
+        )}
         <div className="actions">
-          <button className="primary" onClick={generate} disabled={loading || updates.trim().length < 10}>
+          <button
+            className="primary"
+            onClick={sampleInput ? generateSample : generate}
+            disabled={sampleInput ? false : loading || updates.trim().length < 10}
+          >
             {loading && <span className="spinner" aria-hidden="true" />}
-            {loading ? 'Generating…' : 'Generate report'}
+            {loading ? 'Generating…' : sampleInput ? 'Generate sample report' : 'Generate report'}
           </button>
-          <button className="ghost" onClick={showSample} disabled={loading}>Use sample</button>
+          <button className="ghost" onClick={trySampleGeneration} disabled={loading}>
+            Try a Sample Generation
+          </button>
         </div>
         {loading && (
           <p className="loading-note" role="status">
@@ -216,23 +215,25 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           <div className="toolbar">
             <h2>
               {draft.isSample ? 'Sample Report' : 'Generated report'}{' '}
-              {draft.isSample ? <span className="badge">Preview only</span> : <span className="unsaved">Not saved yet</span>}
+              {draft.isSample ? <span className="badge">Sample</span> : <span className="unsaved">Not saved yet</span>}
               <span className="faint"> · editable</span>
             </h2>
             <div className="actions">
               {!draft.isSample && <button className="primary" onClick={save}>Save Report</button>}
+              {draft.isSample && <button className="primary" onClick={() => setCopying(true)}>Save a Copy</button>}
               <ExportButtons content={draft.content} meta={meta} />
             </div>
           </div>
           {draft.isSample && (
-            <div className="preview-note">
-              This is example content, not generated from your update. Sample reports are previews only: they aren’t saved and aren’t counted in your reports.
+            <div className="preview-note demo-note">
+              <strong>Sample report · Demo experience.</strong> Illustrative output — not generated live. It was written in advance for this fictional update, and nothing was sent to Gemini. You can edit it, or use “Save a Copy” to keep a labelled copy in your demo workspace.
             </div>
           )}
           {saveError && <p className="error" role="alert">{saveError}</p>}
           <p className="meta-line">
             {project && <><strong>{project.name}</strong> · </>}
-            Period: {fmtPeriod(periodStart, periodEnd)} · Generated: {fmtStamp(draft.generatedAt)}
+            Period: {fmtPeriod(periodStart, periodEnd)}
+            {draft.isSample ? ' · Illustrative output — not generated live' : <> · Generated: {fmtStamp(draft.generatedAt)}</>}
           </p>
           <ReportBody
             content={draft.content}
@@ -262,6 +263,20 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
             </div>
           )}
         </section>
+      )}
+      {copying && draft?.isSample && (
+        <SaveCopyDialog
+          sourceKey={SAMPLE_SCENARIO.key}
+          defaultProjectId={SAMPLE_SCENARIO.defaultDemoProjectId}
+          payload={{
+            content: draft.content,
+            originalUpdate: draft.original,
+            periodStart: periodStart || samplePeriod().periodStart,
+            periodEnd: periodEnd || samplePeriod().periodEnd,
+            projectStatusAtReport: null,
+          }}
+          onClose={() => setCopying(false)}
+        />
       )}
     </>
   )

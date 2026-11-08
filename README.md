@@ -15,8 +15,11 @@ Status AI is deliberately **not** a project management platform. Projects exist 
 - **Original updates preserved** alongside every report, and never changed when a report is edited.
 - **Reports library** with All, Recent and By Project views, search, and per-report actions: open, edit, copy, export PDF, email draft, delete (with confirmation).
 - **Overview** with figures calculated only from saved data.
-- **Sample report** that is a local preview: it makes no API call, is clearly labelled, and cannot be saved.
-- **Demo workspace**: ten fictional projects and thirteen locally written reports, loadable and resettable from the Projects page. Demo records are flagged and reset removes only demo records.
+- **Try a Sample Generation**: loads a prepared, fictional update into the normal form so you can review it, then shows a pre-written sample report for it. It makes no API call and never touches Gemini, so it works even when live generation is off.
+- **Sample report previews** are editable and support copy, PDF and email, but are clearly labelled "Sample report · Illustrative output — not generated live". Sample content only says what its fictional update says; anything beyond it is marked "Suggested:".
+- **Save a Copy** keeps a separate, editable copy of a sample or demo report in a demo project (the report's own project by default). The original is never changed, and saving the same sample into a project twice asks you to confirm. Copies are labelled "Sample copy" and show "Saved" rather than "Generated".
+- **Illustrative vs live**: sample, demo and sample-copy reports are never presented as AI-generated. Overview reports "Reports saved" with a live-AI vs demo/sample split, and exports (copy, PDF, email) of illustrative reports are marked as samples.
+- **Demo workspace**: ten fictional projects and thirteen locally written reports, loadable and resettable from the Projects page. Demo records are flagged. **Reset Demo Workspace** removes only demo records, including any sample copies you saved; projects and reports you created yourself are kept, and a demo project that holds one of your own reports is kept as a normal project.
 - **Responsive**: drawer navigation on phones and tablets, persistent sidebar on desktop, motion that respects `prefers-reduced-motion`.
 - No accounts or sign-in.
 
@@ -95,9 +98,11 @@ src/                 React app (hash-routed, no router dependency)
   Overview.jsx       Reporting snapshot
   Projects.jsx       Project directory, workspace, create/edit form, demo controls
   Reports.jsx        Reports library and report view
-  Composer.jsx       New report flow (live generation and sample preview)
+  Composer.jsx       New report flow (live generation and sample generation)
+  SaveCopy.jsx       "Save a Copy" dialog for sample and demo reports
   store.js           localStorage-backed store and actions
   demo.js            Fictional demo workspace data
+  samples.js         Prepared fictional sample update and its pre-written report
   sections.js        The seven-section definition and text helpers
   pdf.js, exporters.js   PDF, copy and email-draft output
 server/

@@ -105,6 +105,30 @@ export const actions = {
     return report
   },
 
+  // "Save a Copy" of a sample/demo report into a demo project. The copy is a separate record with a
+  // deep-cloned body, so the original is never touched. It is flagged demo (removed by Reset Demo
+  // Workspace) and sampleCopy (never presented as live AI output).
+  saveSampleCopy({ projectId, content, originalUpdate, periodStart, periodEnd, copiedFrom, projectStatusAtReport = null }) {
+    const report = {
+      id: uid(),
+      projectId,
+      title: content.title || 'Sample report',
+      originalUpdate,
+      periodStart,
+      periodEnd,
+      generatedAt: now(), // when the copy was saved; shown as "Saved", not "Generated"
+      updatedAt: null,
+      source: 'sample-copy',
+      demo: true,
+      sampleCopy: true,
+      copiedFrom,
+      projectStatusAtReport,
+      content: structuredClone(content),
+    }
+    commit({ ...state, reports: [report, ...state.reports] })
+    return report
+  },
+
   // Only the generated content can change; originalUpdate and dates are immutable here.
   updateReportContent(id, content) {
     commit({

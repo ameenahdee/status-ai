@@ -34,13 +34,16 @@ export const fmtStamp = (iso) =>
   iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 export const fmtPeriod = (start, end) => (start || end ? `${fmtDate(start)} – ${fmtDate(end)}` : 'Not set')
 
+// Sample, demo and sample-copy reports are illustrative, so they are never labelled "Generated".
+export const dateLabel = (r) => (r?.sampleCopy ? 'Saved' : r?.demo ? 'Dated' : 'Generated')
+
 // meta: { projectName, periodStart, periodEnd, generatedAt, isSample }
 export function metaLines(meta = {}) {
   const lines = []
-  if (meta.isSample) lines.push('SAMPLE REPORT – example content, not generated from your update')
+  if (meta.isSample) lines.push('SAMPLE REPORT – illustrative output, not generated live')
   if (meta.projectName) lines.push(`Project: ${meta.projectName}`)
   lines.push(`Reporting period: ${fmtPeriod(meta.periodStart, meta.periodEnd)}`)
-  if (meta.generatedAt) lines.push(`Generated: ${fmtStamp(meta.generatedAt)}`)
+  if (meta.generatedAt && !meta.isSample) lines.push(`Generated: ${fmtStamp(meta.generatedAt)}`)
   return lines
 }
 

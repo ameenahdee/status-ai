@@ -1,6 +1,6 @@
 import { useStore, STATUSES } from './store.js'
 import { navigate } from './router.js'
-import { fmtPeriod, fmtStamp } from './sections.js'
+import { fmtPeriod, fmtStamp, dateLabel } from './sections.js'
 import { StatusBadge, EmptyState } from './ui.jsx'
 
 const SEVERITY = { Blocked: 0, 'Off Track': 1, 'At Risk': 2 }
@@ -12,6 +12,7 @@ export default function Overview() {
   const count = (s) => projects.filter((p) => p.status === s).length
   const unset = projects.filter((p) => !p.status).length
   const byId = Object.fromEntries(projects.map((p) => [p.id, p]))
+  const sampleCount = reports.filter((r) => r.demo).length // demo and sample-copy reports are never counted as live AI
   const recent = [...reports].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt)).slice(0, 5)
   const attention = projects
     .filter((p) => p.status in SEVERITY)
@@ -29,7 +30,11 @@ export default function Overview() {
 
       <div className="stats">
         <div className="card stat"><span className="num">{projects.length}</span><span>Total projects</span></div>
-        <div className="card stat"><span className="num">{reports.length}</span><span>Reports generated</span></div>
+        <div className="card stat">
+          <span className="num">{reports.length}</span>
+          <span>Reports saved</span>
+          {sampleCount > 0 && <span className="faint">{reports.length - sampleCount} live AI · {sampleCount} demo or sample</span>}
+        </div>
       </div>
 
       <div className="stats four">
@@ -47,7 +52,7 @@ export default function Overview() {
           <p className="muted">Create a project, add a rough update, and get an executive-ready report.</p>
           <div className="actions center">
             <button className="primary" onClick={() => navigate('/projects')}>Create your first project</button>
-            <button className="ghost" onClick={() => navigate('/reports/new?sample=1')}>Try a sample report</button>
+            <button className="ghost" onClick={() => navigate('/reports/new?sample=1')}>Try a Sample Generation</button>
           </div>
         </EmptyState>
       ) : (
@@ -59,7 +64,7 @@ export default function Overview() {
                 {recent.map((r) => (
                   <li key={r.id}>
                     <a href={`#/reports/${r.id}`}><strong>{r.title}</strong></a>
-                    <span className="faint">{byId[r.projectId]?.name} · {fmtPeriod(r.periodStart, r.periodEnd)} · generated {fmtStamp(r.generatedAt)}</span>
+                    <span className="faint">{byId[r.projectId]?.name} · {fmtPeriod(r.periodStart, r.periodEnd)} · {dateLabel(r).toLowerCase()} {fmtStamp(r.generatedAt)}</span>
                   </li>
                 ))}
               </ul>

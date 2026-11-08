@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { SECTIONS, itemsOf, isEmptySection, toLines, fromLines, fmtPeriod, fmtStamp } from './sections.js'
+import { SECTIONS, itemsOf, isEmptySection, toLines, fromLines, fmtPeriod, fmtStamp, dateLabel } from './sections.js'
 import { copyReport, emailReport, exportPdf, metaOf } from './exporters.js'
 import { actions } from './store.js'
 import { navigate } from './router.js'
@@ -94,7 +94,7 @@ export function Toast({ message, onDone }) {
   return <div className="toast" role="status"><span aria-hidden="true">✓</span> {message}</div>
 }
 
-export const DemoBadge =() => <span className="demo-badge" title="Illustrative demo content">Demo</span>
+export const DemoBadge = ({ label = 'Demo' }) => <span className="demo-badge" title="Illustrative content, not generated live">{label}</span>
 
 export function Menu({ items, label = 'Actions' }) {
   const [open, setOpen] = useState(false)
@@ -183,7 +183,7 @@ export function ReportCard({ report, project }) {
   return (
     <article className="card rcard">
       <div className="rcard-top">
-        <a className="rcard-title" href={`#/reports/${report.id}`}>{report.title}{report.demo && <> <DemoBadge /></>}</a>
+        <a className="rcard-title" href={`#/reports/${report.id}`}>{report.title}{report.demo && <> <DemoBadge label={report.sampleCopy ? 'Sample copy' : 'Demo'} /></>}</a>
         <Menu
           label={`Actions for ${report.title}`}
           items={[
@@ -200,7 +200,7 @@ export function ReportCard({ report, project }) {
       <p className="excerpt">{itemsOf(report.content, SECTIONS[0])[0]}</p>
       <dl className="facts">
         <div><dt>Period</dt><dd>{fmtPeriod(report.periodStart, report.periodEnd)}</dd></div>
-        <div><dt>Generated</dt><dd>{fmtStamp(report.generatedAt)}</dd></div>
+        <div><dt>{dateLabel(report)}</dt><dd>{fmtStamp(report.generatedAt)}</dd></div>
       </dl>
       <div className="rcard-foot">
         <StatusBadge status={report.projectStatusAtReport} empty="Status not recorded" />

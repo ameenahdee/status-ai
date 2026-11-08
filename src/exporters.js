@@ -5,6 +5,7 @@ export const metaOf = (report, project) => ({
   periodStart: report.periodStart,
   periodEnd: report.periodEnd,
   generatedAt: report.generatedAt,
+  isSample: !!(report.demo || report.sampleCopy), // illustrative reports are marked in copy/PDF/email
 })
 
 export async function copyReport(content, meta) {

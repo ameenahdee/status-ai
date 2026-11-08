@@ -23,7 +23,7 @@ function Page({ route }) {
   if (a === 'reports') {
     if (!b) return <ReportsPage />
     if (b === 'new') return <Composer key={route.raw} sample={route.query.has('sample')} />
-    return <ReportView key={b + route.query.get('edit')} id={b} startEditing={route.query.has('edit')} saved={route.query.has('saved')} />
+    return <ReportView key={b + route.query.get('edit')} id={b} startEditing={route.query.has('edit')} saved={route.query.has('saved')} copied={route.query.has('copied')} />
   }
   return <Overview />
 }
