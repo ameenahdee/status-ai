@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useStore, actions, getPersistence } from './store.js'
+import { useStore, actions, getPersistence, STATUSES } from './store.js'
 import { navigate } from './router.js'
 import { fmtPeriod, fmtStamp, reportStamp } from './sections.js'
 import AssessmentPanel from './Assessment.jsx'
@@ -73,6 +73,8 @@ export function ReportView({ id, startEditing, saved, copied }) {
   const report = store.reports.find((r) => r.id === id)
   const [draft, setDraft] = useState(() => (startEditing ? structuredClone(report?.content ?? null) : null))
   const editing = draft !== null
+  // the final Project Health status while editing (starts as the report's saved status)
+  const [statusDraft, setStatusDraft] = useState(() => report?.projectStatusAtReport ?? '')
   const [confirm, setConfirm] = useState(false)
   const [copying, setCopying] = useState(false)
   // Never claim "saved" unless the data really was written to this browser's storage
@@ -85,7 +87,12 @@ export function ReportView({ id, startEditing, saved, copied }) {
 
   const project = store.projects.find((p) => p.id === report.projectId)
   const content = editing ? draft : report.content
-  const begin = () => setDraft(structuredClone(report.content))
+  const begin = () => {
+    setStatusDraft(report.projectStatusAtReport ?? '')
+    setDraft(structuredClone(report.content))
+  }
+  // Illustrative reports (demo, sample copies) never carry a real status or touch real status history
+  const canEditStatus = !report.demo && !report.sampleCopy
 
   return (
     <>
@@ -102,7 +109,17 @@ export function ReportView({ id, startEditing, saved, copied }) {
               {' · '}{reportStamp(report).label}: {fmtStamp(reportStamp(report).iso)}
               {report.updatedAt && <> · Edited: {fmtStamp(report.updatedAt)}</>}
             </p>
-            <p className="meta-line">Project status at time of reporting: <StatusBadge status={report.projectStatusAtReport} empty="Not recorded" /></p>
+            <p className="meta-line">
+              Project Health:{' '}
+              {editing && canEditStatus ? (
+                <select aria-label="Final project status" value={statusDraft} onChange={(e) => setStatusDraft(e.target.value)}>
+                  {!report.projectStatusAtReport && <option value="" disabled>Not recorded</option>}
+                  {STATUSES.map((s) => <option key={s}>{s}</option>)}
+                </select>
+              ) : (
+                <StatusBadge status={report.projectStatusAtReport} empty="Not recorded" />
+              )}
+            </p>
           </div>
           <div className="actions">
             {editing ? (
@@ -110,6 +127,7 @@ export function ReportView({ id, startEditing, saved, copied }) {
                 <button className="ghost" onClick={() => setDraft(null)}>Cancel</button>
                 <button className="primary" onClick={() => {
                   actions.updateReportContent(id, draft)
+                  if (canEditStatus && statusDraft && statusDraft !== report.projectStatusAtReport) actions.updateReportStatus(id, statusDraft)
                   setDraft(null)
                   setToast(getPersistence().ok ? { text: 'Changes saved' } : { text: 'Changes made, but NOT saved to this browser. See the warning above.', warn: true })
                 }}>Save changes</button>
@@ -133,7 +151,7 @@ export function ReportView({ id, startEditing, saved, copied }) {
             <strong>Sample report · Demo experience.</strong> Illustrative output — not generated live. Fictional content authored in advance, not produced by Gemini. Use “Save a Copy” to keep your own editable copy.
           </p>
         ) : null}
-        <AssessmentPanel assessment={report.assessment} decision={report.statusDecision} />
+        <AssessmentPanel assessment={report.assessment} finalStatus={report.projectStatusAtReport} />
         <ReportBody content={content} editing={editing} onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))} />
         {!report.demo && <WhatsChanged value={report.whatsChanged} />}
         <details className="orig">

@@ -264,6 +264,16 @@ button:disabled{opacity:.5;cursor:not-allowed}
 /* Project health assessment (AI recommendation + PM decision) */
 .assessment{border:1px solid var(--line);border-left:4px solid var(--pink);border-radius:10px;background:var(--surface2);padding:14px 16px;margin:16px 0}
 .assessment h3{margin:0;font-size:15px}
+.assessment-title{margin:0}
+.assessment-toggle{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;width:100%;margin:0;padding:0;background:none;border:0;border-radius:6px;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.assessment-chevron{display:inline-block;width:14px;color:var(--plum-light);transition:transform .15s var(--ease)}
+.assessment.open .assessment-chevron{transform:rotate(90deg)}
+.assessment-name{font-size:15px;font-weight:700}
+.assessment-summary{flex-basis:100%;display:flex;flex-wrap:wrap;gap:4px 18px;padding-left:24px;font-size:13.5px;font-weight:400}
+.assessment-pair{display:inline-flex;align-items:center;gap:6px}
+.assessment-body{margin-top:8px;padding-top:4px;border-top:1px solid var(--line)}
+.assessment-body[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.assessment-chevron{transition:none}}
 .assessment h4{margin:12px 0 4px;font-size:13px}
 .assessment-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px}
 .assessment-outcome{margin:4px 0 6px}

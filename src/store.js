@@ -327,6 +327,62 @@ export const actions = {
     return persistence
   },
 
+  // Changes the PM-finalised status of a SAVED report (Edit report). Only the PM can do this, to one of the four
+  // statuses; an AI recommendation is never used. Returns the status-history entry, or null when nothing changed
+  // (same status, unknown report, or a demo report / sample copy, which never touch real status history).
+  //   * the report's projectStatusAtReport (and its decision record, relative to the untouched AI recommendation) change
+  //   * a status-history entry is ALWAYS recorded: previous status, new status, time and the report
+  //   * the PROJECT's current status changes only if it currently comes from this report (otherwise a later manual
+  //     change, or a newer report, would be overwritten by editing an old one)
+  //   * saved comparisons that show health movement for this report, or against it, are recalculated, so none shows an
+  //     outdated movement. Nothing else in a comparison changes.
+  updateReportStatus(reportId, status) {
+    if (!isFinalStatus(status)) throw new Error('A report status must be On Track, At Risk, Blocked or Off Track.')
+    const report = state.reports.find((r) => r.id === reportId)
+    if (!report || report.demo || report.sampleCopy) return null
+    const previous = isFinalStatus(report.projectStatusAtReport) ? report.projectStatusAtReport : null
+    if (previous === status) return null
+    const at = now()
+    const project = state.projects.find((p) => p.id === report.projectId)
+    const src = project?.statusSource
+    const fromThisReport = !!project && (src?.type === 'report' || src?.type === 'ai-confirmed') && src.reportId === reportId
+    const changesProject = fromThisReport && project.status !== status
+    const before = fromThisReport ? project.status ?? null : previous
+    const entry = {
+      id: uid(),
+      projectId: report.projectId,
+      previousStatus: before,
+      previousStatusKnown: before !== null,
+      newStatus: status,
+      at,
+      source: 'report',
+      reportId,
+      reportEdit: true, // the status of a saved report was edited
+      projectStatusChanged: changesProject,
+    }
+    let reports = state.reports.map((r) =>
+      r.id === reportId
+        ? {
+            ...r,
+            projectStatusAtReport: status,
+            updatedAt: at,
+            // the AI recommendation stays exactly as it was; only the PM's decision record follows the new status
+            statusDecision: r.assessment ? { ...(r.statusDecision ?? {}), status, action: decisionAction(r.assessment, status), decidedAt: at } : r.statusDecision ?? null,
+          }
+        : r,
+    )
+    reports = refreshHealthMovement(reports, reportId)
+    commit({
+      ...state,
+      reports,
+      projects: changesProject
+        ? state.projects.map((p) => (p.id === project.id ? { ...p, status, statusSource: { type: 'report', reportId, at, historyId: entry.id } } : p))
+        : state.projects,
+      statusHistory: [...state.statusHistory, entry],
+    })
+    return entry
+  },
+
   // Only the current (human-reviewed) content can change. originalUpdate, generatedContent, the reporting
   // period and generatedAt / savedAt are immutable here; updatedAt records the edit.
   updateReportContent(id, content) {
@@ -411,6 +467,18 @@ function withHealthMovement(wc, reports, currentStatus) {
   if (!wc || wc.status !== 'compared') return wc && { ...wc, healthMovement: undefined }
   const base = reports.find((r) => r.id === wc.baseline?.reportId)
   return { ...wc, healthMovement: computeHealthMovement(base?.projectStatusAtReport, currentStatus) }
+}
+// After a report's status changes: its own movement (against what it was compared with) and the movement of every
+// saved report that was compared WITH it are recalculated from the two PM-finalised statuses.
+function refreshHealthMovement(reports, changedId) {
+  const byId = new Map(reports.map((r) => [r.id, r]))
+  return reports.map((r) => {
+    const wc = r.whatsChanged
+    if (!wc || wc.status !== 'compared') return r
+    if (r.id !== changedId && wc.baseline?.reportId !== changedId) return r
+    const base = byId.get(wc.baseline?.reportId)
+    return { ...r, whatsChanged: { ...wc, healthMovement: computeHealthMovement(base?.projectStatusAtReport, r.projectStatusAtReport) } }
+  })
 }
 const withoutHealthMovement = (wc) => {
   if (!wc) return wc
