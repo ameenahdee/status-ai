@@ -8,6 +8,11 @@ export const SECTIONS = [
   { key: 'executiveActionRequired', label: 'Executive Action Required' },
 ]
 
+// Identifies the wording of SYSTEM_PROMPT. Bump it whenever the prompt changes: it is stored on every newly
+// generated report so a report can be traced to the prompt that produced it.
+// test/generation-metadata.test.mjs fails if SYSTEM_PROMPT changes without this being updated.
+export const PROMPT_VERSION = 'report-prompt-2026-11-08.1'
+
 export const SYSTEM_PROMPT = `You turn rough project updates into a clear, professional status report for executives.
 Rules:
 - Use ONLY facts in the updates. Never invent names, owners, dates, numbers, approvals, progress or decisions.

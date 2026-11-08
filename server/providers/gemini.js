@@ -36,6 +36,7 @@ export function createGeminiProvider({ apiKey, model, timeoutMs = 45_000 }) {
   const ai = new GoogleGenAI({ apiKey })
   return {
     name: 'gemini',
+    model, // recorded with each generated report
     async generateReport(input) {
       const contents = buildPrompt(input)
       let res

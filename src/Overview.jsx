@@ -1,6 +1,6 @@
 import { useStore, STATUSES } from './store.js'
 import { navigate } from './router.js'
-import { fmtPeriod, fmtStamp, dateLabel } from './sections.js'
+import { fmtPeriod, fmtStamp, reportStamp } from './sections.js'
 import { StatusBadge, EmptyState } from './ui.jsx'
 
 const SEVERITY = { Blocked: 0, 'Off Track': 1, 'At Risk': 2 }
@@ -13,7 +13,7 @@ export default function Overview() {
   const unset = projects.filter((p) => !p.status).length
   const byId = Object.fromEntries(projects.map((p) => [p.id, p]))
   const sampleCount = reports.filter((r) => r.demo).length // demo and sample-copy reports are never counted as live AI
-  const recent = [...reports].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt)).slice(0, 5)
+  const recent = [...reports].sort((a, b) => b.savedAt.localeCompare(a.savedAt)).slice(0, 5)
   const attention = projects
     .filter((p) => p.status in SEVERITY)
     .sort((a, b) => SEVERITY[a.status] - SEVERITY[b.status])
@@ -64,7 +64,7 @@ export default function Overview() {
                 {recent.map((r) => (
                   <li key={r.id}>
                     <a href={`#/reports/${r.id}`}><strong>{r.title}</strong></a>
-                    <span className="faint">{byId[r.projectId]?.name} · {fmtPeriod(r.periodStart, r.periodEnd)} · {dateLabel(r).toLowerCase()} {fmtStamp(r.generatedAt)}</span>
+                    <span className="faint">{byId[r.projectId]?.name} · {fmtPeriod(r.periodStart, r.periodEnd)} · {reportStamp(r).label.toLowerCase()} {fmtStamp(reportStamp(r).iso)}</span>
                   </li>
                 ))}
               </ul>

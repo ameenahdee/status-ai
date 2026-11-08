@@ -78,7 +78,9 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
             : friendly[res.status] || data.error || 'Something went wrong generating your report. Please try again.',
         )
       }
-      setDraft({ content: data.report, original: data.original, generatedAt: new Date().toISOString(), isSample: false })
+      // `generated` keeps the AI's output exactly as received; `content` is what the PM then edits.
+      // generatedAt is the server's time of generation (not when the PM saves, and not the browser's clock).
+      setDraft({ content: data.report, generated: structuredClone(data.report), original: data.original, generatedAt: data.generatedAt ?? null, generation: { model: data.model ?? null, promptVersion: data.promptVersion ?? null }, isSample: false })
       setStatus(project.status || '')
       scrollToId('draft')
     } catch (e) {
@@ -126,6 +128,9 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
       periodStart,
       periodEnd,
       content: draft.content,
+      generatedContent: draft.generated,
+      generatedAt: draft.generatedAt,
+      generation: draft.generation,
       projectStatusAtReport: status,
     })
     if (status && status !== project.status) actions.setProjectStatus(project.id, status, { type: 'report', reportId: report.id })
@@ -233,7 +238,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           <p className="meta-line">
             {project && <><strong>{project.name}</strong> · </>}
             Period: {fmtPeriod(periodStart, periodEnd)}
-            {draft.isSample ? ' · Illustrative output — not generated live' : <> · Generated: {fmtStamp(draft.generatedAt)}</>}
+            {draft.isSample ? ' · Illustrative output — not generated live' : draft.generatedAt ? <> · Generated: {fmtStamp(draft.generatedAt)}</> : null}
           </p>
           <ReportBody
             content={draft.content}

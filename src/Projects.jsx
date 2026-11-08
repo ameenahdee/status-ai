@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useStore, actions, reportsFor, hasDemo, STATUSES } from './store.js'
+import { useStore, actions, reportsFor, hasDemo, STATUSES, DESCRIPTION_MAX } from './store.js'
 import { navigate } from './router.js'
-import { fmtDate, fmtPeriod, fmtStamp, todayStr, dateLabel } from './sections.js'
+import { fmtDate, fmtPeriod, fmtStamp, todayStr, reportStamp } from './sections.js'
+import { latestByPeriod } from './history.js'
 import { Modal, ConfirmDialog, StatusBadge, ReportCard, EmptyState, DemoBadge } from './ui.jsx'
 
 const PAGE_SIZE = 6
-const DESC_MAX = 500
+const DESC_MAX = DESCRIPTION_MAX // the same limit the store enforces on create and update
 
 function ProjectForm({ initial, onClose, onSaved }) {
   const [f, setF] = useState({
@@ -149,7 +150,7 @@ export function ProjectsPage() {
           <div className="grid-projects fade-in" key={page}>
             {visible.map((p) => {
               const reps = reportsFor(store, p.id)
-              const last = reps[0]
+              const last = latestByPeriod(reps) // by reporting period, so a back-filled report is never "latest"
               return (
                 <a key={p.id} className="card pcard" href={`#/projects/${p.id}`}>
                   <div className="pcard-top">
@@ -159,7 +160,7 @@ export function ProjectsPage() {
                   <dl className="facts">
                     <div><dt>Started</dt><dd>{fmtDate(p.startDate)}</dd></div>
                     <div><dt>Last reporting period</dt><dd>{last ? fmtPeriod(last.periodStart, last.periodEnd) : 'No reports yet'}</dd></div>
-                    <div><dt>Latest report</dt><dd>{last ? fmtStamp(last.generatedAt) : '—'}</dd></div>
+                    <div><dt>Latest report</dt><dd>{last ? fmtStamp(reportStamp(last).iso) : '—'}</dd></div>
                     <div><dt>Reports</dt><dd>{reps.length}</dd></div>
                   </dl>
                 </a>
@@ -195,7 +196,7 @@ export function ProjectWorkspace({ id }) {
   if (!p) return <EmptyState title="Project not found"><a href="#/projects">Back to projects</a></EmptyState>
 
   const reps = reportsFor(store, id)
-  const latest = reps[0]
+  const latest = latestByPeriod(reps)
   const src = p.statusSource
   const srcReport = src?.type === 'report' ? store.reports.find((r) => r.id === src.reportId) : null
 
@@ -220,7 +221,7 @@ export function ProjectWorkspace({ id }) {
           {p.audience && <div><dt>Audience</dt><dd>{p.audience}</dd></div>}
           <div>
             <dt>Latest report</dt>
-            <dd>{latest ? <><a href={`#/reports/${latest.id}`}>{fmtPeriod(latest.periodStart, latest.periodEnd)}</a> · {dateLabel(latest).toLowerCase()} {fmtStamp(latest.generatedAt)}</> : 'No reports yet'}</dd>
+            <dd>{latest ? <><a href={`#/reports/${latest.id}`}>{fmtPeriod(latest.periodStart, latest.periodEnd)}</a> · {reportStamp(latest).label.toLowerCase()} {fmtStamp(reportStamp(latest).iso)}</> : 'No reports yet'}</dd>
           </div>
         </dl>
         <div className="statusrow">

@@ -94,6 +94,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .field-help{font-size:12.5px;color:var(--muted);margin:-8px 0 14px}
 .field-help .counter{white-space:nowrap;float:right;margin-left:8px}
 .demo-note{border-left:3px solid var(--pink)}
+.storage-banner{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--line);border-left:3px solid var(--plum-light);border-radius:10px;padding:10px 14px;margin:0 0 16px;font-size:14px}
+.storage-banner p{margin:0;flex:1 1 280px}
+.storage-banner.bad{background:#FDECEA;border-color:#f3c3be;border-left-color:#B3261E;color:#7a1810}
+.toast.warn{background:#B3261E}
 .preview-note{background:var(--surface2);border-radius:10px;padding:10px 14px;font-size:13.5px;margin:0 0 16px}
 
 /* ---------- badges ---------- */

@@ -47,7 +47,7 @@ export default function SaveCopyDialog({ sourceKey, defaultProjectId, payload, o
               </label>
               {existing && (
                 <p className="flash" role="status">
-                  You already saved a copy of this sample to this project on {fmtStamp(existing.generatedAt)}.{' '}
+                  You already saved a copy of this sample to this project on {fmtStamp(existing.savedAt)}.{' '}
                   <a href={`#/reports/${existing.id}`}>View it</a>, or save another one below.
                 </p>
               )}

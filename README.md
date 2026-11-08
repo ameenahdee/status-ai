@@ -75,6 +75,53 @@ npm start
 | `npm run build` | Production frontend build into `dist/` |
 | `npm start` | Serve `dist/` and the API |
 | `npm run lint` | Run Oxlint |
+| `npm test` | Run the automated test suite once |
+| `npm run test:watch` | Re-run tests when files change |
+| `npm run test:coverage` | Run tests with Node's built-in coverage report (indicative only, see Testing) |
+
+## Testing
+
+The test suite uses Node's built-in test runner (`node:test`), so it needs **no extra packages** and runs on the Node version the project already requires.
+
+```bash
+npm test
+```
+
+Expected result: all tests pass (`fail 0`, exit code 0). A few entries are reported as **todo**: they are known gaps that are written down as tests but intentionally not enforced yet (see below). They do not fail the run.
+
+**What is covered** (everything lives in `test/`):
+
+| File | Covers |
+| --- | --- |
+| `projects.test.mjs` | Creating and editing projects, the 500-character description limit, status changes, project/report associations |
+| `reports.test.mjs` | Saving, editing and deleting reports; original update, reporting period and project link preserved; history ordering |
+| `demo.test.mjs` | Demo workspace data, load/reset behaviour, Save a Copy (separate deep copy, edits kept, originals unchanged, copies removed by reset), the prepared sample scenario |
+| `persistence.test.mjs` | Data surviving a refresh, existing/older data loading, corrupted or unexpected stored data, storage failures |
+| `sections.test.mjs` | The seven-section structure and fallbacks, edit helpers, and that sample, demo and live reports are labelled and exported differently |
+| `email-draft.test.mjs` | The Email draft link (`mailto:` subject and body, encoding, sample marking), tested against a fake `window` so nothing can open |
+| `schema.test.mjs`, `migration.test.mjs` | Schema validators and the version 1 → 2 migration (nothing lost or invented, idempotent, pre-migration backup, newer-version protection) |
+| `report-model.test.mjs`, `status-history.test.mjs` | Original update and AI output preserved apart from edits, separate timestamps, status snapshot at report time, status history and allowed sources |
+| `report-history.test.mjs` | Historical selection: same project, period-end ordering, sample exclusion, duplicate and overlapping periods, back-filled reports |
+| `limits.test.mjs` | Per-IP rate limiter (with pruning) and global daily cap |
+| `api.test.mjs` | `POST /api/report` and `/api/health`: validation, JSON error format, disabled live generation, provider errors and timeouts, usage limits, security headers |
+
+**How the tests stay safe and repeatable**
+
+- **No real Gemini calls, ever.** The API tests start the real server as a child process with a preload (`test/helpers/genai-stub.mjs`) that replaces `fetch`: Gemini answers come from a controlled stub, and any other network call is blocked.
+- **No real keys or `.env`.** The test server uses a fake key and runs in an empty temporary folder, so your real `.env` is never read.
+- **No real browser storage.** Store tests use an in-memory fake `localStorage`, loaded fresh for every test (`test/helpers/storage.mjs`).
+- Tests are independent: each gets its own storage or server, on a free port.
+- **Never click "Email draft" in a real browser test without intercepting it.** It navigates to a `mailto:` link, which opens the machine's default mail app (for example Outlook) with a prefilled draft. Browser-level switches (the Navigation API, a CSP `sandbox` header, profile settings) do not stop this. Either rely on `email-draft.test.mjs`, or, in a browser test, rewrite the single `window.location.href = \`mailto:…\`` line as the test browser loads the script (so the real handler still runs but only records the link) and check that rewrite actually happened before clicking.
+
+**Not covered yet**
+
+- **React components and UI flows** (form validation messages, that a sample is not saved until you choose Save a Copy, drawer navigation, modals, PDF download, responsive layout). These need a DOM or browser test tool, which is not set up.
+- Project field validation (required name, start date and description) lives inside the project form component, so only the store-level limits are tested.
+- `server/index.js` runs in a child process, so `npm run test:coverage` cannot see it, and it under-counts `src/store.js` because each test loads a fresh copy. Treat coverage numbers as indicative, not as a measure of completeness.
+
+**Known gaps:** none are currently recorded as `todo`. If you find a gap you cannot fix yet, write it as a test with `{ todo: 'reason' }` (or `it.todo(...)`) so it shows up in every run without failing it, and remove the marker when it is fixed.
+
+**Storage behaviour that is tested** (see `persistence.test.mjs`): a failed save is reported (`getPersistence()` says `ok: false`) instead of looking successful, and recovers when a later save works; if saved data cannot be read the app stops writing so it cannot overwrite it; unreadable or malformed stored data is copied to a second key (`statusai.v1.set-aside`) before the app starts afresh, and valid records load exactly as stored. How these appear on screen (the warning banner and the "NOT saved" messages) is UI behaviour and is not covered by automated tests yet.
 
 ## Configuration
 
@@ -116,13 +163,33 @@ server/
 
 **Replaceable AI provider.** The server talks to the model only through a provider that implements `generateReport({ updates, projectName, projectDescription, audience, periodStart, periodEnd })` and returns the report object. Adding another provider (for example one backed by retrieval over past reports) means adding a file under `server/providers/` and a case in `server/providers/index.js`. No retrieval or vector storage is implemented today.
 
-**Data model.** Projects and reports are stored under one `localStorage` key (`statusai.v1`). Records have stable UUIDs, ISO timestamps, the original submitted update, and the reporting period, so they can later move to a database without reshaping.
+**Data model (schema version 2).** Projects, reports and status history are stored under one `localStorage` key (`statusai.v1`, with a `version` field inside). Every record has a stable UUID; links between them use ids, never array position.
+
+A report keeps these independently:
+
+| Field | Meaning |
+| --- | --- |
+| `originalUpdate` | The text the PM submitted. Never changed. |
+| `generatedContent` | The original AI output, kept after edits. Never changed. `null` when unknown or not applicable. |
+| `content` | The PM-editable report (starts as a copy of the AI output). |
+| `periodStart`, `periodEnd` | The reporting period. |
+| `generatedAt` | When the AI really generated it (supplied by the server). `null` if unknown. |
+| `savedAt` / `updatedAt` | When first saved / last edited (`null` until edited). The save time is never used as the generation time. |
+| `projectStatusAtReport` | The project's confirmed status when the report was saved. Later status changes do not rewrite it. |
+| `provenance` | `recorded`, `recovered`, `unknown` or `not-applicable` for `generatedAt` and `generatedContent`, so unknown is distinguishable from confirmed. |
+
+**Status history** (`statusHistory`): each change records `projectId`, `previousStatus`, `newStatus`, `at`, `source` and the associated `reportId`. Allowed sources are `manual`, `report` and `ai-confirmed` (an AI recommendation that the PM accepted). An AI recommendation on its own is never a status change.
+
+**Historical selection** (`src/history.js`, for the future "What's Changed"; no UI yet): same project only; ordered by reporting-period end date (not save time); demo reports and saved sample copies are excluded; exact duplicate periods, overlapping periods and back-filled reports are flagged explicitly (a back-filled report is never treated as the latest); a missing item is never assumed resolved.
+
+**Migration.** Version 1 data is migrated automatically on load. Nothing is dropped, ids and associations are kept, and nothing is invented: an old report's `generatedAt` (which was really the save time) becomes `savedAt`, the AI generation time stays `null`/`unknown`, and the original AI output is recovered only for live reports that were never edited. Before the first migration the original data is copied once to `statusai.v1.pre-v2` (never overwritten). Data saved by a newer version of the app is left untouched and not overwritten (a warning banner explains).
 
 **API behaviour.** `POST /api/report` validates input (length limits, date format), applies a per-IP rate limit (8 requests per minute, in memory, idle entries pruned) and a global daily cap, enforces a provider timeout, and maps provider failures to friendly messages (busy, usage limit reached, timeout). Technical details and credentials are never returned to the browser.
 
 ## Data and privacy
 
 - Projects, reports and original updates are stored **in your browser only**. They are not synchronised across devices or users, and clearing browser data removes them.
+- If the browser cannot save (storage full or blocked, for example in a private window), a warning banner says so and success messages are replaced by a "NOT saved" warning. If saved data cannot be read, the app does not overwrite it. Data that cannot be loaded is set aside in a second storage key (`statusai.v1.set-aside`), not deleted.
 - When you generate a report, the update text, project name, project description, audience and reporting period are sent to your server and then to the Gemini API. Do not submit confidential information you are not permitted to share with that provider.
 - Demo content is entirely fictional and illustrative.
 - AI-generated content can contain mistakes. Review before sharing.
@@ -138,7 +205,8 @@ The server sends basic security headers (including a Content Security Policy tha
 ## Known limitations
 
 - Local-only storage; no accounts, sync or collaboration.
-- No automated test suite is included yet.
+- Reports do not record which AI model or prompt version produced them.
+- Automated tests cover the data layer and API but not the React UI (see Testing).
 - Email drafts use a `mailto:` link, so very long reports may be truncated by some email clients.
 - Free-tier Gemini capacity varies and can return temporary "busy" errors.
 

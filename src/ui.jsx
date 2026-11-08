@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { SECTIONS, itemsOf, isEmptySection, toLines, fromLines, fmtPeriod, fmtStamp, dateLabel } from './sections.js'
+import { SECTIONS, itemsOf, isEmptySection, toLines, fromLines, fmtPeriod, fmtStamp, reportStamp } from './sections.js'
 import { copyReport, emailReport, exportPdf, metaOf } from './exporters.js'
 import { actions } from './store.js'
 import { navigate } from './router.js'
@@ -80,7 +80,7 @@ export function ConfirmDialog({ title, message, confirmLabel = 'Delete', onConfi
 }
 
 // Brief, polite confirmation (e.g. "Report saved"); clears itself
-export function Toast({ message, onDone }) {
+export function Toast({ message, onDone, tone = 'ok' }) {
   const doneRef = useRef(onDone)
   useEffect(() => {
     doneRef.current = onDone
@@ -91,7 +91,12 @@ export function Toast({ message, onDone }) {
     return () => clearTimeout(t)
   }, [message])
   if (!message) return null
-  return <div className="toast" role="status"><span aria-hidden="true">✓</span> {message}</div>
+  const warn = tone === 'warn'
+  return (
+    <div className={`toast ${warn ? 'warn' : ''}`} role={warn ? 'alert' : 'status'}>
+      <span aria-hidden="true">{warn ? '!' : '✓'}</span> {message}
+    </div>
+  )
 }
 
 export const DemoBadge = ({ label = 'Demo' }) => <span className="demo-badge" title="Illustrative content, not generated live">{label}</span>
@@ -200,7 +205,7 @@ export function ReportCard({ report, project }) {
       <p className="excerpt">{itemsOf(report.content, SECTIONS[0])[0]}</p>
       <dl className="facts">
         <div><dt>Period</dt><dd>{fmtPeriod(report.periodStart, report.periodEnd)}</dd></div>
-        <div><dt>{dateLabel(report)}</dt><dd>{fmtStamp(report.generatedAt)}</dd></div>
+        <div><dt>{reportStamp(report).label}</dt><dd>{fmtStamp(reportStamp(report).iso)}</dd></div>
       </dl>
       <div className="rcard-foot">
         <StatusBadge status={report.projectStatusAtReport} empty="Status not recorded" />

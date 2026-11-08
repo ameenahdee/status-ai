@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useStore, actions } from './store.js'
+import { useStore, actions, getPersistence } from './store.js'
 import { navigate } from './router.js'
-import { fmtPeriod, fmtStamp, dateLabel } from './sections.js'
+import { fmtPeriod, fmtStamp, reportStamp } from './sections.js'
 import { ReportCard, ReportBody, ExportButtons, StatusBadge, ConfirmDialog, EmptyState, DemoBadge, Toast } from './ui.jsx'
 import { metaOf } from './exporters.js'
 import SaveCopyDialog from './SaveCopy.jsx'
@@ -16,14 +16,14 @@ export function ReportsPage() {
   const byId = Object.fromEntries(store.projects.map((p) => [p.id, p]))
 
   const needle = q.trim().toLowerCase()
-  const sorted = [...store.reports].sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
+  const sorted = [...store.reports].sort((a, b) => b.savedAt.localeCompare(a.savedAt))
   const matches = sorted.filter((r) => {
     if (!needle) return true
     const hay = [r.title, byId[r.projectId]?.name, r.content.executiveSummary, r.projectStatusAtReport].join(' ').toLowerCase()
     return hay.includes(needle)
   })
   const cutoff = now - RECENT_DAYS * 86400000
-  const shown = tab === 'recent' ? matches.filter((r) => new Date(r.generatedAt).getTime() >= cutoff) : matches
+  const shown = tab === 'recent' ? matches.filter((r) => new Date(r.savedAt).getTime() >= cutoff) : matches
 
   const groups = store.projects
     .map((p) => ({ p, items: matches.filter((r) => r.projectId === p.id) }))
@@ -73,7 +73,12 @@ export function ReportView({ id, startEditing, saved, copied }) {
   const editing = draft !== null
   const [confirm, setConfirm] = useState(false)
   const [copying, setCopying] = useState(false)
-  const [toast, setToast] = useState(saved ? 'Report saved to your project' : copied ? 'Sample copy saved to your demo workspace' : '')
+  // Never claim "saved" unless the data really was written to this browser's storage
+  const [toast, setToast] = useState(() => {
+    if (!saved && !copied) return null
+    const text = saved ? 'Report saved to your project' : 'Sample copy saved to your demo workspace'
+    return getPersistence().ok ? { text } : { text: 'Created, but NOT saved to this browser. See the warning above.', warn: true }
+  })
   if (!report) return <EmptyState title="Report not found"><a href="#/reports">Back to reports</a></EmptyState>
 
   const project = store.projects.find((p) => p.id === report.projectId)
@@ -92,7 +97,7 @@ export function ReportView({ id, startEditing, saved, copied }) {
             <p className="meta-line">
               <a href={`#/projects/${report.projectId}`}>{project?.name || 'Unknown project'}</a>
               {' · '}Period: {fmtPeriod(report.periodStart, report.periodEnd)}
-              {' · '}{dateLabel(report)}: {fmtStamp(report.generatedAt)}
+              {' · '}{reportStamp(report).label}: {fmtStamp(reportStamp(report).iso)}
               {report.updatedAt && <> · Edited: {fmtStamp(report.updatedAt)}</>}
             </p>
             <p className="meta-line">Project status at time of reporting: <StatusBadge status={report.projectStatusAtReport} empty="Not recorded" /></p>
@@ -101,7 +106,11 @@ export function ReportView({ id, startEditing, saved, copied }) {
             {editing ? (
               <>
                 <button className="ghost" onClick={() => setDraft(null)}>Cancel</button>
-                <button className="primary" onClick={() => { actions.updateReportContent(id, draft); setDraft(null); setToast('Changes saved') }}>Save changes</button>
+                <button className="primary" onClick={() => {
+                  actions.updateReportContent(id, draft)
+                  setDraft(null)
+                  setToast(getPersistence().ok ? { text: 'Changes saved' } : { text: 'Changes made, but NOT saved to this browser. See the warning above.', warn: true })
+                }}>Save changes</button>
               </>
             ) : (
               <>
@@ -128,7 +137,7 @@ export function ReportView({ id, startEditing, saved, copied }) {
           <pre>{report.originalUpdate}</pre>
         </details>
       </section>
-      <Toast message={toast} onDone={() => setToast('')} />
+      <Toast message={toast?.text ?? ''} tone={toast?.warn ? 'warn' : 'ok'} onDone={() => setToast(null)} />
       {copying && (
         <SaveCopyDialog
           sourceKey={report.id}

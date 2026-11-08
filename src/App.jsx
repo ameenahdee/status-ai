@@ -5,6 +5,53 @@ import Overview from './Overview.jsx'
 import { ProjectsPage, ProjectWorkspace } from './Projects.jsx'
 import { ReportsPage, ReportView } from './Reports.jsx'
 import Composer from './Composer.jsx'
+import { usePersistence, actions } from './store.js'
+
+// Tells the truth about storage: if changes are not being saved (or saved data could not be read),
+// say so plainly instead of letting the app look as if everything worked.
+function StorageBanner() {
+  const p = usePersistence()
+  const [dismissed, setDismissed] = useState(false)
+
+  if (!p.ok) {
+    const text = {
+      'write-failed':
+        'Your latest changes are not being saved. This browser could not write to storage (it may be full, or blocked, for example in a private window). What you see now will be lost if you refresh or close this tab.',
+      'read-blocked':
+        'Your saved data cannot be read in this browser right now, so changes made now will not be saved. Your existing data has not been touched. Try reloading the page, or check this site’s storage settings.',
+      'cannot-preserve':
+        'Some saved data could not be read, and a backup copy could not be stored, so changes will not be saved in this session. Nothing has been overwritten.',
+      'newer-version':
+        'The data saved in this browser was created by a newer version of Status AI, so this version cannot read it safely. To avoid overwriting it, nothing will be saved in this session. Your data has not been changed.',
+      'backup-exists':
+        'Some saved data could not be read, and an earlier backup is already stored, so this newly unreadable data could not be backed up safely. To avoid overwriting anything, changes will not be saved in this session. Nothing has been deleted or overwritten.',
+    }[p.reason]
+    return (
+      <div className="storage-banner bad" role="alert">
+        <p>{text}</p>
+        {p.reason === 'write-failed' && (
+          <button className="ghost" onClick={() => actions.retrySave()}>Try saving again</button>
+        )}
+      </div>
+    )
+  }
+
+  if (p.notice && !dismissed) {
+    const { unreadable, projects, reports, statusHistory = 0 } = p.notice
+    const n = projects + reports + statusHistory
+    return (
+      <div className="storage-banner" role="status">
+        <p>
+          {unreadable
+            ? 'The data saved in this browser could not be read, so you are starting with an empty workspace. The unreadable data was set aside, not deleted.'
+            : `${n} saved ${n === 1 ? 'record' : 'records'} could not be read and ${n === 1 ? 'was' : 'were'} set aside (not deleted). Everything else loaded normally.`}
+        </p>
+        <button className="ghost" onClick={() => setDismissed(true)}>Dismiss</button>
+      </div>
+    )
+  }
+  return null
+}
 
 const NAV = [
   ['', 'Overview', '/'],
@@ -82,6 +129,7 @@ export default function App() {
         <p className="side-note">Data is saved in this browser only.</p>
       </aside>
       <main className="main">
+        <StorageBanner />
         <div className="page" key={pathKey}>
           <Page route={route} />
         </div>

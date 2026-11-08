@@ -10,7 +10,10 @@
         "dev": "concurrently -k -n api,web \"node --watch server/index.js\" \"vite\"",
         "build": "vite build",
         "start": "node server/index.js",
-        "lint": "oxlint"
+        "lint": "oxlint",
+        "test": "node --test --test-reporter=spec \"test/**/*.test.mjs\"",
+        "test:watch": "node --test --watch --test-reporter=spec \"test/**/*.test.mjs\"",
+        "test:coverage": "node --test --experimental-test-coverage --test-reporter=spec \"test/**/*.test.mjs\""
     },
     "dependencies": {
         "@google/genai": "^3.0.0",

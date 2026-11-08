@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { existsSync } from 'node:fs'
 import { getProvider } from './providers/index.js'
 import { createRateLimiter, createDailyCap, positiveInt } from './limits.js'
+import { PROMPT_VERSION } from './prompt.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -88,8 +89,16 @@ app.post('/api/report', async (req, res) => {
       periodStart: isDate(periodStart) ? periodStart : '',
       periodEnd: isDate(periodEnd) ? periodEnd : '',
     })
-    // Original submission is returned untouched alongside the generated report
-    res.json({ original: updates, report })
+    // Original submission is returned untouched alongside the generated report. `generatedAt` is when the
+    // provider actually produced it (server clock), so it is never confused with when the PM later saves it.
+    // `model` and `promptVersion` say what produced it; `model` is null if the provider does not report one.
+    res.json({
+      original: updates,
+      report,
+      generatedAt: new Date().toISOString(),
+      model: typeof provider.model === 'string' && provider.model ? provider.model : null,
+      promptVersion: PROMPT_VERSION,
+    })
   } catch (e) {
     console.error('generate failed:', e.code || e.status || '', e.message)
     if (res.headersSent) return
@@ -103,6 +112,9 @@ app.post('/api/report', async (req, res) => {
     res.status(502).json({ error: 'We could not generate the report this time. Please try again, or explore the sample report.' })
   }
 })
+
+// Unknown API paths (or methods) get the same JSON error shape as every other API error, not an HTML page
+app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found.' }))
 
 // Last-resort handlers: always answer with JSON and keep the process alive
 app.use((err, _req, res, _next) => {

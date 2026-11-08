@@ -1,45 +1,169 @@
 import { useSyncExternalStore } from 'react'
 import { buildDemo } from './demo.js'
+import {
+  CURRENT_VERSION, STATUSES, STATUS_CHANGE_SOURCES, emptyState, storedVersion, migrateV1toV2, isObject, isIsoTimestamp,
+  validContent, validProject, validReportV1, validReportV2, validHistoryEntry, cleanGeneration,
+} from './schema.js'
 
-// All MVP data lives in this browser's localStorage. Shape is future-friendly:
-// stable UUIDs, ISO timestamps, original updates and reporting periods preserved.
+// All MVP data lives in this browser's localStorage under one key. The stored object carries a
+// `version` (see schema.js) so older data can be migrated safely. Records have stable UUIDs, ISO
+// timestamps, and keep original information separate from human-edited output.
 const KEY = 'statusai.v1'
-export const STATUSES = ['On Track', 'At Risk', 'Blocked', 'Off Track']
+// Stored data that cannot be loaded is copied here (never deleted) before the app starts afresh.
+const SET_ASIDE_KEY = 'statusai.v1.set-aside'
+// A one-time copy of the data exactly as it was before a schema migration (never overwritten).
+const PRE_MIGRATION_KEY = 'statusai.v1.pre-v2'
+export { STATUSES }
+export const DESCRIPTION_MAX = 500
+// One rule for every write path, so the limit never depends on which form or caller was used.
+const capDescription = (d) => d.trim().slice(0, DESCRIPTION_MAX)
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
-function load() {
-  try {
-    const s = JSON.parse(localStorage.getItem(KEY))
-    if (Array.isArray(s?.projects) && Array.isArray(s?.reports)) return s
-  } catch {
-    /* fall through to empty state */
+// Keeps valid records (first one wins if an id repeats) and counts the rest.
+function keepValid(list, valid) {
+  const seen = new Set()
+  const kept = []
+  let dropped = 0
+  for (const item of list) {
+    if (valid(item) && !seen.has(item.id)) {
+      seen.add(item.id)
+      kept.push(item)
+    } else dropped += 1
   }
-  return { version: 1, projects: [], reports: [] }
+  return { kept, dropped }
 }
 
-let state = load()
+const UNREADABLE = { unreadable: true, projects: 0, reports: 0 }
+
+function load() {
+  let raw
+  try {
+    raw = localStorage.getItem(KEY)
+  } catch {
+    return { state: emptyState(), readBlocked: true } // storage exists but cannot be read right now
+  }
+  if (raw == null || raw === '') return { state: emptyState() }
+  let parsed
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { state: emptyState(), setAside: raw, notice: UNREADABLE }
+  }
+  if (!isObject(parsed) || !Array.isArray(parsed.projects) || !Array.isArray(parsed.reports))
+    return { state: emptyState(), setAside: raw, notice: UNREADABLE }
+
+  const version = storedVersion(parsed)
+  // Written by a NEWER version of the app: this version cannot interpret it safely, and saving would
+  // overwrite fields it does not know about. Leave it exactly where it is and write nothing.
+  if (version > CURRENT_VERSION) return { state: emptyState(), newerVersion: true }
+
+  const p = keepValid(parsed.projects, validProject)
+  const r = keepValid(parsed.reports, version < 2 ? validReportV1 : validReportV2)
+  const historyIsList = parsed.statusHistory == null || Array.isArray(parsed.statusHistory)
+  const h = keepValid(historyIsList ? (parsed.statusHistory ?? []) : [], validHistoryEntry)
+  const droppedHistory = h.dropped + (historyIsList ? 0 : 1)
+
+  let next = { ...parsed, projects: p.kept, reports: r.kept, statusHistory: h.kept }
+  const migrated = version < CURRENT_VERSION
+  if (migrated) next = migrateV1toV2(next)
+
+  const out = { state: next, migrated }
+  if (p.dropped + r.dropped + droppedHistory) {
+    out.setAside = raw
+    out.notice = {
+      unreadable: false,
+      projects: p.dropped,
+      reports: r.dropped,
+      ...(droppedHistory ? { statusHistory: droppedHistory } : {}),
+    }
+  } else if (migrated) {
+    out.preMigrationBackup = raw
+  }
+  return out
+}
+
+const loaded = load()
+let state = loaded.state
+// While true, nothing is written: the existing stored data could not be read, could not be backed
+// up, or was written by a newer version, so writing would risk overwriting it.
+let writesBlocked = !!(loaded.readBlocked || loaded.newerVersion)
+// Whether what is on screen is really persisted. `ok:false` must never be presented as "saved".
+let persistence = loaded.readBlocked
+  ? { ok: false, reason: 'read-blocked', notice: null }
+  : loaded.newerVersion
+    ? { ok: false, reason: 'newer-version', notice: null }
+    : { ok: true, reason: null, notice: loaded.notice ?? null }
+if (loaded.setAside != null) {
+  const block = (reason) => {
+    writesBlocked = true
+    persistence = { ok: false, reason, notice: loaded.notice ?? null }
+  }
+  let existing = null
+  let slotReadable = true
+  try {
+    existing = localStorage.getItem(SET_ASIDE_KEY)
+  } catch {
+    slotReadable = false
+  }
+  if (!slotReadable) {
+    block('cannot-preserve') // cannot tell whether an earlier backup is there, so assume there is
+  } else if (existing != null && existing !== '' && existing !== loaded.setAside) {
+    // An earlier backup exists and holds something different. It must never be replaced, and the new
+    // unreadable data cannot be saved anywhere else, so stop writing: the next save would destroy it.
+    block('backup-exists')
+  } else if (existing !== loaded.setAside) {
+    try {
+      localStorage.setItem(SET_ASIDE_KEY, loaded.setAside)
+    } catch {
+      block('cannot-preserve')
+    }
+  }
+  // (existing === loaded.setAside: this exact data is already safely backed up, so carrying on is fine)
+}
+if (loaded.preMigrationBackup != null && !writesBlocked) {
+  // The migration only ADDS fields, so this is a safety net rather than a requirement: a copy of the
+  // data as it was before, kept once and never overwritten. If it cannot be stored we carry on.
+  try {
+    const existing = localStorage.getItem(PRE_MIGRATION_KEY)
+    if (existing == null || existing === '') localStorage.setItem(PRE_MIGRATION_KEY, loaded.preMigrationBackup)
+  } catch {
+    /* non-essential */
+  }
+}
+
 const listeners = new Set()
+const subscribe = (cb) => {
+  listeners.add(cb)
+  return () => listeners.delete(cb)
+}
+
+function setPersistence(next) {
+  // keep the same object when nothing changed, so subscribers do not re-render needlessly
+  if (next.ok !== persistence.ok || next.reason !== persistence.reason) persistence = next
+}
 
 function commit(next) {
   state = next
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state))
-  } catch (e) {
-    console.warn('Could not persist data to localStorage', e)
+  if (!writesBlocked) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(state))
+      setPersistence({ ok: true, reason: null, notice: persistence.notice })
+    } catch (e) {
+      console.warn('Could not persist data to localStorage', e)
+      setPersistence({ ok: false, reason: 'write-failed', notice: persistence.notice })
+    }
   }
   listeners.forEach((l) => l())
 }
 
-export const useStore = () =>
-  useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb)
-      return () => listeners.delete(cb)
-    },
-    () => state,
-  )
+export const useStore = () => useSyncExternalStore(subscribe, () => state)
+
+// { ok, reason: null | 'write-failed' | 'read-blocked' | 'cannot-preserve' | 'backup-exists' | 'newer-version',
+//   notice: null | {unreadable, projects, reports, statusHistory?} }
+export const getPersistence = () => persistence
+export const usePersistence = () => useSyncExternalStore(subscribe, () => persistence)
 
 const now = () => new Date().toISOString()
 
@@ -49,7 +173,7 @@ export const actions = {
       id: uid(),
       name: name.trim(),
       startDate,
-      description: description.trim().slice(0, 500),
+      description: capDescription(description),
       owner: owner.trim(),
       audience: audience.trim(),
       status: null, // never invented: set by the Project Manager (or from a report they save)
@@ -69,7 +193,7 @@ export const actions = {
               ...p,
               name: name.trim(),
               startDate,
-              description: description.trim(),
+              description: capDescription(description),
               owner: owner.trim(),
               audience: audience.trim(),
             }
@@ -78,16 +202,49 @@ export const actions = {
     })
   },
 
+  // Changes a project's CONFIRMED status and records the change in the status history. Only a status the
+  // PM set or confirmed is ever recorded: `source.type` must be 'manual', 'report' or 'ai-confirmed'. An AI
+  // recommendation is not a source, so a recommendation alone can never change a status.
+  // Returns the history entry, or null when nothing changed (same status, or unknown project).
   setProjectStatus(id, status, source = { type: 'manual' }) {
+    const to = status || null
+    if (to !== null && !STATUSES.includes(to)) throw new Error(`Unknown project status: ${status}`)
+    if (!STATUS_CHANGE_SOURCES.includes(source?.type)) throw new Error(`Unsupported status change source: ${source?.type}`)
+    if (source.type === 'report' && !(typeof source.reportId === 'string' && source.reportId))
+      throw new Error('A status set from a report must name that report')
+    const project = state.projects.find((p) => p.id === id)
+    if (!project || (project.status ?? null) === to) return null // nothing to record, and no rewriting of when/how it was set
+    const at = now()
+    const entry = {
+      id: uid(),
+      projectId: id,
+      previousStatus: project.status ?? null,
+      previousStatusKnown: true,
+      newStatus: to,
+      at,
+      source: source.type,
+      reportId: typeof source.reportId === 'string' ? source.reportId : null,
+    }
     commit({
       ...state,
       projects: state.projects.map((p) =>
-        p.id === id ? { ...p, status: status || null, statusSource: status ? { ...source, at: now() } : null } : p,
+        p.id === id ? { ...p, status: to, statusSource: to ? { ...source, at, historyId: entry.id } : null } : p,
       ),
+      statusHistory: [...state.statusHistory, entry],
     })
+    return entry
   },
 
-  addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, projectStatusAtReport }) {
+  // Saves a live AI report. Three versions of the content are kept apart:
+  //   originalUpdate   what the PM submitted (immutable)
+  //   generatedContent the report exactly as the AI produced it (immutable)
+  //   content          the current, human-reviewed version (the only one edits change)
+  // and three timestamps: generatedAt (when the AI generated it), savedAt (first saved), updatedAt (last edited).
+  // `generation` ({model, promptVersion}, as reported by the server) is stored as received and never inferred.
+  addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, generatedContent, generatedAt, generation, projectStatusAtReport }) {
+    const generatedAtValue = isIsoTimestamp(generatedAt) ? generatedAt : null // never substituted with the save time
+    const aiOutput = validContent(generatedContent) ? structuredClone(generatedContent) : null
+    const generationValue = cleanGeneration(generation)
     const report = {
       id: uid(),
       projectId,
@@ -95,11 +252,20 @@ export const actions = {
       originalUpdate, // never modified after creation
       periodStart,
       periodEnd,
-      generatedAt: now(), // separate from the reporting period
+      generatedAt: generatedAtValue,
+      savedAt: now(),
       updatedAt: null,
       source: 'ai',
+      // the status the PM confirmed for this report; later changes to the project never rewrite it
       projectStatusAtReport: projectStatusAtReport || null,
-      content,
+      generatedContent: aiOutput,
+      generation: generationValue,
+      content: structuredClone(content),
+      provenance: {
+        generatedAt: generatedAtValue ? 'recorded' : 'unknown',
+        generatedContent: aiOutput ? 'recorded' : 'unknown',
+        generation: generationValue ? 'recorded' : 'unknown',
+      },
     }
     commit({ ...state, reports: [report, ...state.reports] })
     return report
@@ -107,7 +273,7 @@ export const actions = {
 
   // "Save a Copy" of a sample/demo report into a demo project. The copy is a separate record with a
   // deep-cloned body, so the original is never touched. It is flagged demo (removed by Reset Demo
-  // Workspace) and sampleCopy (never presented as live AI output).
+  // Workspace) and sampleCopy (never presented as live AI output, so it has no AI generation time or output).
   saveSampleCopy({ projectId, content, originalUpdate, periodStart, periodEnd, copiedFrom, projectStatusAtReport = null }) {
     const report = {
       id: uid(),
@@ -116,31 +282,54 @@ export const actions = {
       originalUpdate,
       periodStart,
       periodEnd,
-      generatedAt: now(), // when the copy was saved; shown as "Saved", not "Generated"
+      generatedAt: null,
+      savedAt: now(), // when the copy was saved; shown as "Saved", never "Generated"
       updatedAt: null,
       source: 'sample-copy',
       demo: true,
       sampleCopy: true,
       copiedFrom,
       projectStatusAtReport,
+      generatedContent: null,
       content: structuredClone(content),
+      generation: null,
+      provenance: { generatedAt: 'not-applicable', generatedContent: 'not-applicable', generation: 'not-applicable' },
     }
     commit({ ...state, reports: [report, ...state.reports] })
     return report
   },
 
-  // Only the generated content can change; originalUpdate and dates are immutable here.
+  // Try again to persist what is currently in memory (after a failed write). While writes are blocked
+  // to protect unreadable stored data, this deliberately writes nothing.
+  retrySave() {
+    commit(state)
+    return persistence
+  },
+
+  // Only the current (human-reviewed) content can change. originalUpdate, generatedContent, the reporting
+  // period and generatedAt / savedAt are immutable here; updatedAt records the edit.
   updateReportContent(id, content) {
     commit({
       ...state,
       reports: state.reports.map((r) =>
-        r.id === id ? { ...r, content, title: content.title || r.title, updatedAt: now() } : r,
+        r.id === id ? { ...r, content: structuredClone(content), title: content.title || r.title, updatedAt: now() } : r,
       ),
     })
   },
 
+  // Deleting a report never rewrites the record of what happened. Status-history entries that point at it are
+  // KEPT and marked `reportDeleted` (their reportId stays, so it is still clear which report it was). The
+  // project's current status and statusSource are left exactly as they are. Unknown id: nothing changes.
   deleteReport(id) {
-    commit({ ...state, reports: state.reports.filter((r) => r.id !== id) })
+    if (!state.reports.some((r) => r.id === id)) return commit({ ...state })
+    const at = now()
+    commit({
+      ...state,
+      reports: state.reports.filter((r) => r.id !== id),
+      statusHistory: state.statusHistory.map((h) =>
+        h.reportId === id && !h.reportDeleted ? { ...h, reportDeleted: true, reportDeletedAt: at } : h,
+      ),
+    })
   },
 
   // Demo workspace: illustrative records, flagged `demo: true`, fixed IDs (no duplicates on reload).
@@ -148,10 +337,23 @@ export const actions = {
     const demo = buildDemo(new Date())
     const haveP = new Set(state.projects.map((p) => p.id))
     const haveR = new Set(state.reports.map((r) => r.id))
+    const haveH = new Set(state.statusHistory.map((h) => h.id))
     const newP = demo.projects.filter((p) => !haveP.has(p.id))
     const newR = demo.reports.filter((r) => !haveR.has(r.id))
-    if (newP.length || newR.length)
-      commit({ ...state, projects: [...state.projects, ...newP], reports: [...state.reports, ...newR] })
+    const projects = [...state.projects, ...newP]
+    // demo status history is only attached to projects that are still demo projects
+    const demoIds = new Set(projects.filter((p) => p.demo).map((p) => p.id))
+    const newH = demo.statusHistory.filter((h) => !haveH.has(h.id) && demoIds.has(h.projectId))
+    // a demo report that was deleted and is now restored (same fixed id) is no longer "deleted"
+    const restored = new Set(newR.map((r) => r.id))
+    const history = state.statusHistory.map((h) => {
+      if (!h.reportDeleted || !restored.has(h.reportId)) return h
+      const { reportDeleted: _d, reportDeletedAt: _a, ...rest } = h
+      return rest
+    })
+    const historyChanged = history.some((h, i) => h !== state.statusHistory[i])
+    if (newP.length || newR.length || newH.length || historyChanged)
+      commit({ ...state, projects, reports: [...state.reports, ...newR], statusHistory: [...history, ...newH] })
     return { addedProjects: newP.length, addedReports: newR.length }
   },
 
@@ -163,12 +365,19 @@ export const actions = {
     const demoProjects = state.projects.filter((p) => p.demo)
     const kept = demoProjects.filter((p) => userReportProjectIds.has(p.id))
     const removedProjects = demoProjects.length - kept.length
+    const removedHistoryIds = new Set(state.statusHistory.filter((h) => h.demo).map((h) => h.id))
     commit({
       ...state,
       projects: state.projects
         .filter((p) => !p.demo || userReportProjectIds.has(p.id))
-        .map((p) => (p.demo ? { ...p, demo: false } : p)),
+        .map((p) => {
+          if (!p.demo) return p
+          // the project is now the user's own: it must not point at demo history that has just been removed
+          const { historyId, ...src } = p.statusSource ?? {}
+          return { ...p, demo: false, statusSource: p.statusSource ? (removedHistoryIds.has(historyId) ? src : p.statusSource) : p.statusSource }
+        }),
       reports: state.reports.filter((r) => !r.demo),
+      statusHistory: state.statusHistory.filter((h) => !h.demo),
     })
     return { removedProjects, removedReports, keptProjects: kept.length }
   },
@@ -176,5 +385,7 @@ export const actions = {
 
 export const hasDemo = (s) => s.projects.some((p) => p.demo) || s.reports.some((r) => r.demo)
 
+// A project's reports, most recently SAVED first. (This is display order only: it is not reporting-period
+// order. For historical selection use history.js, which orders by period end.)
 export const reportsFor = (s, projectId) =>
-  s.reports.filter((r) => r.projectId === projectId).sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
+  s.reports.filter((r) => r.projectId === projectId).sort((a, b) => b.savedAt.localeCompare(a.savedAt))
