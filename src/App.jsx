@@ -6,6 +6,7 @@ import { ProjectsPage, ProjectWorkspace } from './Projects.jsx'
 import { ReportsPage, ReportView } from './Reports.jsx'
 import Composer from './Composer.jsx'
 import { usePersistence, actions } from './store.js'
+import { IconHome, IconLayers, IconBars, IconUser } from './icons.jsx'
 
 // Tells the truth about storage: if changes are not being saved (or saved data could not be read),
 // say so plainly instead of letting the app look as if everything worked.
@@ -37,8 +38,8 @@ function StorageBanner() {
   }
 
   if (p.notice && !dismissed) {
-    const { unreadable, projects, reports, statusHistory = 0 } = p.notice
-    const n = projects + reports + statusHistory
+    const { unreadable, projects, reports, statusHistory = 0, demoActivity = 0 } = p.notice
+    const n = projects + reports + statusHistory + demoActivity
     return (
       <div className="storage-banner" role="status">
         <p>
@@ -54,16 +55,16 @@ function StorageBanner() {
 }
 
 const NAV = [
-  ['', 'Overview', '/'],
-  ['projects', 'Projects', '/projects'],
-  ['reports', 'Reports', '/reports'],
+  ['', 'Overview', '/', IconHome],
+  ['projects', 'Projects', '/projects', IconLayers],
+  ['reports', 'Reports', '/reports', IconBars],
 ]
 
 function Page({ route }) {
   const [a, b, c] = route.path
   if (!a) return <Overview />
   if (a === 'projects') {
-    if (!b) return <ProjectsPage />
+    if (!b) return <ProjectsPage openNew={route.query.has('new')} />
     if (c === 'new-report') return <Composer key={route.raw} projectId={b} />
     return <ProjectWorkspace key={b} id={b} />
   }
@@ -112,7 +113,7 @@ export default function App() {
       <div className={`scrim ${open ? 'open' : ''}`} onClick={() => setOpen(false)} aria-hidden="true" />
       <aside id="sidebar" className={`side ${open ? 'open' : ''}`}>
         <div className="side-head">
-          <a href="#/" className="brand" aria-label="Status AI home"><Logo /></a>
+          <a href="#/" className="brand" aria-label="Status AI home"><Logo variant="dark" /></a>
           <button className="side-close" aria-label="Close menu" onClick={() => setOpen(false)}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -120,13 +121,21 @@ export default function App() {
           </button>
         </div>
         <nav aria-label="Primary">
-          {NAV.map(([key, label, href]) => (
+          {NAV.map(([key, label, href, Icon]) => (
             <a key={key} href={`#${href}`} className={section === key ? 'on' : ''} aria-current={section === key ? 'page' : undefined}>
-              {label}
+              <Icon size={22} />
+              <span>{label}</span>
             </a>
           ))}
         </nav>
-        <p className="side-note">Data is saved in this browser only.</p>
+        {/* No accounts: no name, no job title */}
+        <div className="side-profile">
+          <span className="avatar" aria-hidden="true"><IconUser size={22} /></span>
+          <div>
+            <strong>Workspace</strong>
+            <span>Personal workspace</span>
+          </div>
+        </div>
       </aside>
       <main className="main">
         <StorageBanner />

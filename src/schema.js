@@ -166,6 +166,15 @@ export const validHistoryEntry = (h) =>
   (h.reportId == null || isStr(h.reportId)) &&
   (h.reportDeleted == null || typeof h.reportDeleted === 'boolean') && (h.reportDeletedAt == null || isStr(h.reportDeletedAt))
 
+// Sample Recent Activity entries created by "Load Demo Workspace". They are flagged demo, point at demo projects and
+// reports by id, and are removed by "Reset Demo Workspace". Real activity is never stored here: it is worked out from
+// real projects, reports and status history (see dashboard.js).
+export const DEMO_ACTIVITY_KINDS = ['project-created', 'project-updated', 'status-updated', 'report-generated', 'report-saved', 'report-edited']
+export const validDemoActivity = (a) =>
+  isObject(a) && isStr(a.id) && a.id !== '' && DEMO_ACTIVITY_KINDS.includes(a.kind) && isIsoTimestamp(a.at) &&
+  isStr(a.projectId) && a.projectId !== '' && (a.reportId == null || isStr(a.reportId)) &&
+  (a.status == null || STATUSES.includes(a.status)) && a.demo === true
+
 export const emptyState = () => ({ version: CURRENT_VERSION, projects: [], reports: [], statusHistory: [] })
 
 // Stored `version` as a number; anything missing or malformed is treated as the original version 1.

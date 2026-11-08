@@ -89,9 +89,10 @@ function Pager({ page, pages, onPage }) {
   )
 }
 
-export function ProjectsPage() {
+// `openNew`: arrived from the Overview's "New Project" button, so the existing create-project form opens straight away.
+export function ProjectsPage({ openNew = false }) {
   const store = useStore()
-  const [creating, setCreating] = useState(false)
+  const [creating, setCreating] = useState(openNew)
   const [confirmReset, setConfirmReset] = useState(false)
   const [msg, setMsg] = useState('')
   const [pageRaw, setPage] = useState(1)
@@ -171,12 +172,20 @@ export function ProjectsPage() {
         </>
       )}
 
-      {creating && <ProjectForm onClose={() => setCreating(false)} onSaved={(p) => navigate(`/projects/${p.id}`)} />}
+      {creating && (
+        <ProjectForm
+          onClose={() => {
+            setCreating(false)
+            if (openNew) navigate('/projects') // drop ?new=1 so a refresh does not reopen the form
+          }}
+          onSaved={(p) => navigate(`/projects/${p.id}`)}
+        />
+      )}
       {confirmReset && (
         <ConfirmDialog
           title="Reset demo workspace?"
           confirmLabel="Reset demo"
-          message={`This removes the ${demoProjects.length - keptOnReset} demo projects and ${demoReports.length} demo reports${sampleCopies ? `, including ${sampleCopies} sample ${sampleCopies === 1 ? 'copy' : 'copies'} you saved` : ''}. Projects and reports you created are not affected.${keptOnReset ? ` ${keptOnReset} demo project${keptOnReset === 1 ? '' : 's'} containing reports you saved will be kept as normal project${keptOnReset === 1 ? '' : 's'}.` : ''}`}
+          message={`This removes the ${demoProjects.length - keptOnReset} demo projects and ${demoReports.length} demo reports${sampleCopies ? `, including ${sampleCopies} sample ${sampleCopies === 1 ? 'copy' : 'copies'} you saved` : ''}. The sample entries in Recent Activity are removed too. Projects and reports you created, and your own activity, are not affected.${keptOnReset ? ` ${keptOnReset} demo project${keptOnReset === 1 ? '' : 's'} containing reports you saved will be kept as normal project${keptOnReset === 1 ? '' : 's'}.` : ''}`}
           onCancel={() => setConfirmReset(false)}
           onConfirm={() => {
             const r = actions.resetDemo()

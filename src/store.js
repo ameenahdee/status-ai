@@ -3,7 +3,7 @@ import { buildDemo } from './demo.js'
 import {
   CURRENT_VERSION, STATUSES, STATUS_CHANGE_SOURCES, emptyState, storedVersion, migrateV1toV2, isObject, isIsoTimestamp,
   validContent, validProject, validReportV1, validReportV2, validHistoryEntry, cleanGeneration,
-  cleanAssessment, decisionAction, isFinalStatus, cleanWhatsChanged, computeHealthMovement,
+  cleanAssessment, decisionAction, isFinalStatus, cleanWhatsChanged, computeHealthMovement, validDemoActivity,
 } from './schema.js'
 
 // All MVP data lives in this browser's localStorage under one key. The stored object carries a
@@ -66,18 +66,25 @@ function load() {
   const h = keepValid(historyIsList ? (parsed.statusHistory ?? []) : [], validHistoryEntry)
   const droppedHistory = h.dropped + (historyIsList ? 0 : 1)
 
+  // sample Recent Activity from the demo workspace (optional: older saved data has none)
+  const activityIsList = parsed.demoActivity == null || Array.isArray(parsed.demoActivity)
+  const a = keepValid(activityIsList ? (parsed.demoActivity ?? []) : [], validDemoActivity)
+  const droppedActivity = a.dropped + (activityIsList ? 0 : 1)
+
   let next = { ...parsed, projects: p.kept, reports: r.kept, statusHistory: h.kept }
+  if (parsed.demoActivity != null) next.demoActivity = a.kept // only present once demo activity exists
   const migrated = version < CURRENT_VERSION
   if (migrated) next = migrateV1toV2(next)
 
   const out = { state: next, migrated }
-  if (p.dropped + r.dropped + droppedHistory) {
+  if (p.dropped + r.dropped + droppedHistory + droppedActivity) {
     out.setAside = raw
     out.notice = {
       unreadable: false,
       projects: p.dropped,
       reports: r.dropped,
       ...(droppedHistory ? { statusHistory: droppedHistory } : {}),
+      ...(droppedActivity ? { demoActivity: droppedActivity } : {}),
     }
   } else if (migrated) {
     out.preMigrationBackup = raw
@@ -159,12 +166,13 @@ function commit(next) {
   listeners.forEach((l) => l())
 }
 
-export const useStore = () => useSyncExternalStore(subscribe, () => state)
+// (the third argument is the server-render snapshot, which lets components that read the store be rendered on the server in tests)
+export const useStore = () => useSyncExternalStore(subscribe, () => state, () => state)
 
 // { ok, reason: null | 'write-failed' | 'read-blocked' | 'cannot-preserve' | 'backup-exists' | 'newer-version',
 //   notice: null | {unreadable, projects, reports, statusHistory?} }
 export const getPersistence = () => persistence
-export const usePersistence = () => useSyncExternalStore(subscribe, () => persistence)
+export const usePersistence = () => useSyncExternalStore(subscribe, () => persistence, () => persistence)
 
 const now = () => new Date().toISOString()
 
@@ -185,21 +193,23 @@ export const actions = {
     return project
   },
 
+  // `updatedAt` is set only when a detail really changed, so saving the form untouched records nothing.
   updateProject(id, { name, startDate, description, owner, audience }) {
     commit({
       ...state,
-      projects: state.projects.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              name: name.trim(),
-              startDate,
-              description: capDescription(description),
-              owner: owner.trim(),
-              audience: audience.trim(),
-            }
-          : p,
-      ),
+      projects: state.projects.map((p) => {
+        if (p.id !== id) return p
+        const next = {
+          ...p,
+          name: name.trim(),
+          startDate,
+          description: capDescription(description),
+          owner: owner.trim(),
+          audience: audience.trim(),
+        }
+        const changed = ['name', 'startDate', 'description', 'owner', 'audience'].some((k) => (p[k] ?? '') !== next[k])
+        return changed ? { ...next, updatedAt: now() } : next
+      }),
     })
   },
 
@@ -429,8 +439,12 @@ export const actions = {
       return rest
     })
     const historyChanged = history.some((h, i) => h !== state.statusHistory[i])
-    if (newP.length || newR.length || newH.length || historyChanged)
-      commit({ ...state, projects, reports: [...state.reports, ...newR], statusHistory: [...history, ...newH] })
+    // sample Recent Activity: added once (fixed ids), and only for demo projects and reports that exist
+    const haveA = new Set((state.demoActivity ?? []).map((x) => x.id))
+    const reportIds = new Set([...state.reports, ...newR].map((r) => r.id))
+    const newA = demo.activity.filter((x) => !haveA.has(x.id) && demoIds.has(x.projectId) && (x.reportId == null || reportIds.has(x.reportId)))
+    if (newP.length || newR.length || newH.length || newA.length || historyChanged)
+      commit({ ...state, projects, reports: [...state.reports, ...newR], statusHistory: [...history, ...newH], demoActivity: [...(state.demoActivity ?? []), ...newA] })
     return { addedProjects: newP.length, addedReports: newR.length }
   },
 
@@ -455,6 +469,8 @@ export const actions = {
         }),
       reports: state.reports.filter((r) => !r.demo),
       statusHistory: state.statusHistory.filter((h) => !h.demo),
+      // all sample activity goes; real activity is never stored here
+      ...(state.demoActivity ? { demoActivity: state.demoActivity.filter((x) => !x.demo) } : {}),
     })
     return { removedProjects, removedReports, keptProjects: kept.length }
   },

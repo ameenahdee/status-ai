@@ -273,5 +273,36 @@ export function buildDemo(now = new Date()) {
     }
     projects.push(project)
   })
-  return { projects, reports, statusHistory }
+  return { projects, reports, statusHistory, activity: buildDemoActivity(now, projects, reports) }
+}
+
+// Sample Recent Activity for the demo workspace: seven entries covering every kind of event, newest first, pointing at
+// demo projects and reports that really exist. They are flagged demo (and shown with a Demo badge), have fixed ids so
+// loading the demo twice adds nothing, and are removed with the rest of the demo workspace.
+function buildDemoActivity(now, projects, reports) {
+  const at = (minutesAgo) => new Date(now.getTime() - minutesAgo * 60_000).toISOString()
+  const lastReport = (pid) => reports.filter((r) => r.projectId === pid).at(-1)
+  const byId = (pid) => projects.find((p) => p.id === pid)
+  const pick = (status, nth = 0) => projects.filter((p) => p.status === status)[nth] ?? projects[nth]
+  const atRisk = pick('At Risk')
+  const entries = [
+    { kind: 'report-edited', minutes: 18, project: projects[0], report: lastReport(projects[0]?.id) },
+    { kind: 'report-saved', minutes: 52, project: projects[2], report: lastReport(projects[2]?.id) },
+    { kind: 'report-generated', minutes: 58, project: projects[2], report: lastReport(projects[2]?.id) },
+    { kind: 'status-updated', minutes: 3 * 60, project: atRisk, status: atRisk?.status },
+    { kind: 'project-updated', minutes: 6 * 60, project: projects[4] },
+    { kind: 'project-created', minutes: 26 * 60, project: projects[projects.length - 1] },
+    { kind: 'report-saved', minutes: 2 * 24 * 60 + 40, project: projects[1], report: lastReport(projects[1]?.id) },
+  ]
+  return entries
+    .filter((e) => e.project && byId(e.project.id) && (e.kind.startsWith('report') ? e.report : true))
+    .map((e, i) => ({
+      id: `demo-a-${pad(i + 1)}`,
+      kind: e.kind,
+      at: at(e.minutes),
+      projectId: e.project.id,
+      reportId: e.report?.id ?? null,
+      status: e.status ?? null,
+      demo: true,
+    }))
 }
