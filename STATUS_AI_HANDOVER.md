@@ -12,7 +12,7 @@ Stack	React 19 + Vite, Express 5, Google Gemini via @google/genai, jsPDF, localS
 Deployment	Not deployed. Plan is Render free tier.
 Live Gemini generation	Off by default in production. Needs LIVE_GENERATION_ENABLED=true, and you said not to enable it publicly until Google's terms are reviewed.
 2. Git status and history
-Pushed history (origin/main = 9397f90; later AI Project Health Assessment work is uncommitted until approved):
+Pushed history (origin/main = 8a9db5a; the What Changed work below is uncommitted until approved):
 
 Commit	Message	Content
 1af18f4	Initial Status AI MVP	31 files: app, Gemini provider, projects/reports/demo data model, PDF/copy/email, logo, README
@@ -163,8 +163,8 @@ Existing set-aside backup is never overwritten (backup-exists / cannot-preserve)
 test/email-draft.test.mjs: 9 tests of the real emailReport() against a fake window.
 README: Testing section, scripts table, storage/privacy notes, a warning about the Email draft in browser tests.
 5. Testing
-Repo suite (npm test): 568 tests, 568 pass, 0 fail, about 15s. npm run lint is clean and npm run build passes. Mutation checks on throw-away copies confirmed that the main rules are each caught by tests when broken: deletion marking, generation metadata, evidence verification, the update-evidence requirement, no default to On Track, the decision action, the Project Health export line, the demo exclusion, and the store-level status guard.
-Browser verification (headless Edge, last run 2026-11-08, no real Gemini call): 41 of 41 for v1 migration, report deletion and stubbed live generation (the live-generation check now chooses a status before saving), and 42 of 42 for the health assessment (panel contents, nothing applied before the PM acts, empty status selector, Save and exports disabled until a status is chosen, Accept recommendation, override, Insufficient Information, invented evidence removed, copied text contains only "Project Health: X", status history source ai-confirmed or report). Scripts were browser-check.mjs and assess-check.mjs in the session scratchpad, NOT in the repo, and may be lost. Email draft was never clicked.
+Repo suite (npm test): 668 tests (568 before What Changed), all pass, about 20s. npm run lint is clean and npm run build passes. Mutation checks on throw-away copies confirmed that the main rules are each caught by tests when broken: deletion marking, generation metadata, evidence verification, the update-evidence requirement, no default to On Track, the decision action, the Project Health export line, the demo exclusion, the store-level status guard, resolved-without-current-quote kept, current quote not checked, evidence leaking into exports, and demo reports exporting the section.
+Browser verification (headless Edge, last run 2026-11-09, no real Gemini call): 41 of 41 for v1 migration, report deletion and stubbed live generation; 42 of 42 for the health assessment and mandatory status; 49 of 49 for What Changed and project health movement (first report, comparison with a previous report including new, resolved, omitted-not-resolved and invented items, demo/sample exclusion, comparison failure fallback, period changed after generating, copy text, saved report page). Scripts are browser-check.mjs, assess-check.mjs and changes-check.mjs in the session scratchpad, NOT in the repo, and may be lost. Email draft was never clicked.
 Earlier history: the first test foundation had 258 tests.
 
 Commands:
@@ -212,7 +212,7 @@ History ordering: reportsFor sorts by save time (generatedAt), not by reporting 
 8. Pending, in priority order
 Needs your approval before anything else:
 
-1. Review and approve committing the AI Project Health Assessment work (uncommitted). Nothing is deployed.
+1. Review and approve committing the What Changed work (uncommitted). Nothing is deployed.
 Deployment (not started):
 2. Review Google's current Gemini API terms (age requirements, free-tier data use) and decide an operating arrangement. Keep LIVE_GENERATION_ENABLED unset in production until then.
 3. Render free web service, steps from the earlier audit:
@@ -248,7 +248,7 @@ Step 1, data foundation: DONE except the items below.
 Done: schema version and migration in load(); immutable generatedContent next to the editable content; generation metadata (model, promptVersion); statusHistory; previousReportFor; safe report deletion.
 Still open from Step 1: export/import backup; the project-context snapshot (deferred on purpose); an optional empty sources[] for later Slack provenance. The four status definitions are now written (see section 6).
 Step 2, AI Project Health Assessment: DONE (uncommitted until approved). See "AI Project Health Assessment (built)" in section 6.
-Step 3, What's Changed (THE NEXT FEATURE): compare against the previous report and its original update. Omission must never mean "resolved". "No previous report" must be stated. previousReportFor and the history helpers already exist. Decisions still needed before building it: the comparison baseline (PM-edited report, original AI output, raw update, or all) and the privacy position on sending previous reports to Gemini.
+Step 3, What Changed: DONE (uncommitted until approved). See "What Changed Since Last Report (built)" in section 6. Remaining decision: whether to ever compare against more than one previous report or the raw update.
 Step 4, Slack: blocked until you decide on server-side storage and identity. The current server stores nothing, has no users and no credential storage, and "no accounts" conflicts with OAuth.
 Decisions I still need from you (from the audit):
 
@@ -259,13 +259,13 @@ Comparison baseline: PM-edited report, original AI output, raw update, or all.
 Retaining original AI output and generation metadata (storage and privacy), and how to treat old reports without it.
 Evidence rules, one AI call versus several (quota and latency).
 Durability: stay browser-only with export/import, or move to server storage before Slack.
-Privacy of sending more text (previous reports) to Gemini.
+Privacy of sending more text (previous reports) to Gemini: DECIDED for now. Only the saved text of the single previous report of the same project is sent with the generation request (see section 6). Revisit before any public live generation.
 Whether to show illustrative assessments and comparisons in the demo.
 Slack scopes, retention and identity.
 10. Exact next steps when we resume
-Ask which you want first: (a) commit the AI Project Health Assessment work (after approval), (b) start Step 3, What's Changed, or (c) begin deployment prep once the Google terms review is done.
+Ask which you want first: (a) commit the What Changed work (after approval), (b) begin deployment prep once the Google terms review is done, or (c) the next product feature (Step 4 Slack needs server-side storage and identity decisions first).
 If (a): run git status, lint, build and tests, show the file list, then commit only with approval. Push only with explicit approval.
-If (b): first answer the comparison-baseline and privacy decisions in section 9. Then design the feature read-only, get approval, and build it with tests.
+If (b): review the Render steps and the Google terms first. Do not enable live generation publicly until the terms are reviewed.
 Keep every task read-only until you approve changes.
 # LATEST DEVELOPMENT UPDATE — NOVEMBER 8, 2026
 
@@ -280,11 +280,11 @@ Status AI now has a permanent automated test suite using Node's built-in test ru
 - No lockfile changes were made.
 
 Latest reported results:
-- 568 automated tests passing (258 when the test foundation was first built).
+- 668 automated tests passing (258 when the test foundation was first built).
 - 0 failing tests.
 - Lint passes.
 - Production build passes.
-- 41 of 41 and 42 of 42 headless-browser checks passed (migration, deletion, stubbed live generation, health assessment and mandatory status).
+- 41 of 41, 42 of 42 and 49 of 49 headless-browser checks passed (migration, deletion, stubbed live generation, health assessment, mandatory status, What Changed).
 - No real Gemini API calls during automated testing or browser checks.
 
 The tests cover project management, report management, demo functionality, persistence, storage failures, API behaviour, rate limits, security headers, exports and email draft generation.
@@ -322,13 +322,13 @@ No emails were sent.
 
 ## 4. Current Git State
 
-Last pushed commit (origin/main):
+Last pushed commit (origin/main), AI Project Health Assessment:
 `b2949e5` — Improve public demo experience.
 
 Latest state:
 - Branch: `main`.
-- One local commit sits on top of origin/main: "feat: add automated tests, storage reliability, versioned data model and generation metadata". It holds the test suite, the storage reliability fixes, the version 2 data model, generation metadata, safe report deletion and this handover. Check `git log` for its hash.
-- It has NOT been pushed. Nothing has been deployed.
+- Local main equals origin/main at 8a9db5a plus the uncommitted What Changed work. Commits so far: b2949e5, 0c48ce3, 1af18f4, then 9397f90 (tests, storage reliability, data model v2, generation metadata) and 8a9db5a (AI Project Health Assessment and mandatory status).
+- Nothing has been deployed.
 - `.env` and API keys remain untouched.
 - No packages were installed.
 
@@ -355,7 +355,7 @@ Agreed sequence:
 
 1. Improve the report data model. (DONE)
 2. Implement AI Project Health Assessment. (DONE)
-3. Implement What's Changed.
+3. Implement What Changed. (DONE)
 4. Evaluate communication integrations such as Slack and Microsoft Teams.
 
 ### AI Project Health Assessment (built)
@@ -395,26 +395,43 @@ Prompt: PROMPT_VERSION is report-prompt-2026-11-08.2 (pinned by a hash test). Th
 
 Limitations: the evidence check proves a quote exists in the text, not that the conclusion is right. Sample generations and Save a Copy have no assessment. No UI lists status history yet. Exports of the assessment are intentionally unavailable.
 
-### What's Changed
+### What Changed Since Last Report (built)
 
-Compare the latest valid reporting period with the previous valid report for the same project.
+Generated automatically with every live report, in the SAME Gemini call as the report and the health assessment (no extra AI call, no separate button or screen). Shown on screen as its own section after the seven report sections, beside the internal assessment panel. It is saved with the report and included in copy, email and PDF. It is stakeholder-facing.
 
-Identify:
-- New developments.
-- Resolved blockers.
-- Continuing blockers.
-- Changes in risks.
-- Changes in next steps.
-- Changes in executive actions.
-- Project status movement.
+Heading everywhere (exact text, not upper-cased in the plain-text export): What Changed Since Last Report. It is the eighth section after the existing seven, which are unchanged. Reports without a comparison (older reports, demo reports, sample copies, sample generations) have no eighth section.
 
-Exclude demo and sample reports from historical comparisons. Never assume an omitted issue has been resolved.
+Choosing the previous report (src/history.js comparisonBaselineFor, a thin wrapper over previousReportFor so there is only one set of rules):
+- same project only, ordered by reporting-period END date (never by save or generation time), strictly earlier than the new report's end date;
+- demo reports and sample copies are excluded;
+- the report is never compared with itself (an unsaved report has no id; a saved one is excluded by id);
+- exact duplicate periods collapse to the most recent save, with a note; overlapping periods, back-dated reports and several earlier reports sharing an end date also add a plain-language note, shown in the section and exported;
+- no usable period or project gives "unavailable", never a guess.
+The comparison baseline is the previous report's SAVED (PM-edited) seven sections, because that is what stakeholders saw. Its original update, its AI original and its assessment are not used or sent.
+
+How it works:
+- Composer picks the baseline and sends {periodStart, periodEnd, content} as previousReport. No previous report: nothing is sent and the AI is not asked to compare; the server answers status none.
+- server/comparison.js validates the previous report (shape, size limit, nothing silently truncated; invalid means unavailable) and then every AI change. The model returns changes as {category, state, text, currentQuote, previousQuote}. A change survives only if its quotes appear verbatim (case, spacing and typographic quotes ignored, minimum 8 characters) in the current update (currentQuote) or in one sentence of the previous report (previousQuote): new needs currentQuote; changed, continuing and resolved need both; unclear needs previousQuote. A continuing or resolved claim that the update does not back is downgraded to "unclear" (only in categories that allow it) or dropped, and unclear items always get fixed wording ("Previously reported: ... The current update does not confirm what has happened since."). Omission is therefore never resolution. Invented changes are dropped and counted.
+- Categories: newDevelopments, completedResolved, continuingBlockers, risks, progress, nextSteps, executiveActions (empty ones are not shown). States: new, continuing, resolved, changed (shown as Update) and unclear (shown as Status unclear).
+- The app combines the baseline it chose with the verified items. A comparison is 'compared' only if both exist; otherwise it is 'none' ("No previous report available for comparison.") or 'unavailable' ("A comparison with the previous report could not be completed reliably."). A compared result with no items says "No changes could be established from the submitted update."
+- PM review: the PM can remove a change before saving (not edit or add). Saving stores whatsChanged (final) and generatedWhatsChanged (as the AI produced it). If the project or reporting period is changed after generating, saving is refused until the report is generated again, so a comparison always matches its report.
+- Stored comparisons are validated: 'compared' requires a baseline, 'none' and 'unavailable' have no items. Earlier reports are never modified. Deleting the baseline report later does not affect a saved comparison.
+
+Project health movement (added after the first version; deterministic, no AI): the section starts with a "Project health" line built from two PM-finalised statuses only: projectStatusAtReport of the previous (baseline) report and the status the PM finalises for this report. computeHealthMovement in src/schema.js returns moved, unchanged, previous-not-recorded (the baseline has no finalised status or no longer exists) or current-not-set (nothing is shown or exported until the PM has chosen a status). Wording is fixed: "Project Health moved from X to Y.", "Project Health is unchanged: X." or "Project Health is Y. The previous report's status was not recorded." An AI recommendation (assessment) is never used, for either report. While drafting, the line updates as the PM picks a status; on save the store recomputes it from the stored baseline report and ignores anything the caller sent (stored as whatsChanged.healthMovement, only for compared comparisons, never in generatedWhatsChanged). It cannot be removed by the PM and does not use the AI's evidence.
+
+What stakeholders see: the change text grouped by category with New / Continuing / Resolved / Update / Status unclear markers, the period of the report it was compared with, any notes about uncertain selection, and the fallback sentences above. They never see evidence quotes, the AI health recommendation, reasoning, confidence, model or prompt details. Only the PM-finalised "Project Health: X" line carries health.
+
+Prompt: PROMPT_VERSION is report-prompt-2026-11-09.1 (pinned by a hash test). The response schema requires a changes array only when a previous report is sent. The stub (test/helpers/genai-stub.mjs) supports TEST_GENAI_CHANGES (omit, or a JSON array) and returns changes only when the prompt contains a previous report.
+
+Privacy: the previous report's saved text is now sent to Gemini with the generation request when one exists. Nothing extra is sent for a first report.
+
+Limitations: quote checking proves a quote exists, not that the AI's sentence about it is right, so the PM review and the remove control matter. Only one previous report is used. Items cannot be edited. Reports saved before this feature cannot be backfilled.
 
 ## 7. Immediate Next Task
 
-COMPLETED: (1) the data-model task (versioned storage, original/edited content, timestamps, status history, generation metadata, safe deletion; see section 3 of the earlier notes) and (2) the AI Project Health Assessment with mandatory status finalisation (section 6). Still on localStorage; no authentication, database or integrations. Verified by 568 tests, lint, build and the browser checks above.
+COMPLETED: (1) the data-model task (versioned storage, original/edited content, timestamps, status history, generation metadata, safe deletion), (2) the AI Project Health Assessment with mandatory status finalisation (section 6), and (3) What Changed Since Last Report (section 6, uncommitted until approved). Still on localStorage; no authentication, database or integrations. Verified by 668 tests, lint, build and the browser checks above.
 
-NEXT FEATURE: What's Changed (section 6). Needs the comparison-baseline decision and the privacy position on sending previous reports to Gemini. Design it read-only first, get approval, then build it with tests. Do not start Slack or Teams integrations.
+NEXT: no further product feature is queued. Candidates: deployment preparation (after the Google terms review), export/import backup, a status-history screen, or Slack/Teams (blocked on server-side storage and identity decisions).
 
 Deferred: project-context snapshot in the generation metadata; export/import backup; a UI that lists status history.
 

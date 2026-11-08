@@ -3,6 +3,7 @@ import { useStore, actions, getPersistence } from './store.js'
 import { navigate } from './router.js'
 import { fmtPeriod, fmtStamp, reportStamp } from './sections.js'
 import AssessmentPanel from './Assessment.jsx'
+import WhatsChanged from './WhatsChanged.jsx'
 import { ReportCard, ReportBody, ExportButtons, StatusBadge, ConfirmDialog, EmptyState, DemoBadge, Toast } from './ui.jsx'
 import { metaOf } from './exporters.js'
 import SaveCopyDialog from './SaveCopy.jsx'
@@ -134,6 +135,7 @@ export function ReportView({ id, startEditing, saved, copied }) {
         ) : null}
         <AssessmentPanel assessment={report.assessment} decision={report.statusDecision} />
         <ReportBody content={content} editing={editing} onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))} />
+        {!report.demo && <WhatsChanged value={report.whatsChanged} />}
         <details className="orig">
           <summary>Original submitted update (read-only)</summary>
           <pre>{report.originalUpdate}</pre>

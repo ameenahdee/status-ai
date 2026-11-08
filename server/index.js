@@ -7,6 +7,7 @@ import { getProvider } from './providers/index.js'
 import { createRateLimiter, createDailyCap, positiveInt } from './limits.js'
 import { PROMPT_VERSION } from './prompt.js'
 import { validateAssessment, cleanProjectStatus } from './assessment.js'
+import { validatePrevious, validateComparison } from './comparison.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -64,7 +65,7 @@ const liveEnabled = process.env.LIVE_GENERATION_ENABLED
 app.get('/api/health', (_req, res) => res.json({ ok: !!provider, error: providerError }))
 
 app.post('/api/report', async (req, res) => {
-  const { updates, projectName, projectDescription, projectStatus, audience, periodStart, periodEnd } = req.body || {}
+  const { updates, projectName, projectDescription, projectStatus, audience, periodStart, periodEnd, previousReport } = req.body || {}
   const isDate = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
   if (typeof updates !== 'string' || updates.trim().length < 10)
     return res.status(400).json({ error: 'Please enter a few lines of project updates.' })
@@ -91,8 +92,16 @@ app.post('/api/report', async (req, res) => {
       periodStart: isDate(periodStart) ? periodStart : '',
       periodEnd: isDate(periodEnd) ? periodEnd : '',
     }
-    // ONE provider call produces both the report and the health assessment.
-    const { assessment: rawAssessment, ...report } = await provider.generateReport(input)
+    // What Changed: only attempted when the client sent a previous report that is well formed. No previous
+    // report (or an unusable one) is answered without asking the AI anything.
+    const previous = previousReport == null ? null : validatePrevious(previousReport)
+    if (previous) input.previousReport = previous
+    // ONE provider call produces the report, the health assessment and (if there is a previous report) the changes.
+    const { assessment: rawAssessment, changes: rawChanges, ...report } = await provider.generateReport(input)
+    const whatsChanged =
+      previousReport == null
+        ? { status: 'none', items: [], checks: {} }
+        : validateComparison(rawChanges, { updates: input.updates, previous })
     // The assessment is checked against exactly the text that was sent; unverifiable evidence is dropped.
     const assessment = validateAssessment(rawAssessment, input)
     // Original submission is returned untouched alongside the generated report. `generatedAt` is when the
@@ -102,6 +111,7 @@ app.post('/api/report', async (req, res) => {
       original: updates,
       report,
       assessment,
+      whatsChanged,
       generatedAt: new Date().toISOString(),
       model: typeof provider.model === 'string' && provider.model ? provider.model : null,
       promptVersion: PROMPT_VERSION,

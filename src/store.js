@@ -3,7 +3,7 @@ import { buildDemo } from './demo.js'
 import {
   CURRENT_VERSION, STATUSES, STATUS_CHANGE_SOURCES, emptyState, storedVersion, migrateV1toV2, isObject, isIsoTimestamp,
   validContent, validProject, validReportV1, validReportV2, validHistoryEntry, cleanGeneration,
-  cleanAssessment, decisionAction, isFinalStatus,
+  cleanAssessment, decisionAction, isFinalStatus, cleanWhatsChanged, computeHealthMovement,
 } from './schema.js'
 
 // All MVP data lives in this browser's localStorage under one key. The stored object carries a
@@ -250,7 +250,7 @@ export const actions = {
   // A newly saved report MUST carry a status the PM has finalised (one of the four statuses). This guards the store
   // itself, not just the screen. It applies only to this path (reports the user generates and saves): demo data,
   // sample copies (saveSampleCopy) and records already in storage are not saved through here and are unaffected.
-  addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, generatedContent, generatedAt, generation, assessment, projectStatusAtReport }) {
+  addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, generatedContent, generatedAt, generation, assessment, whatsChanged, generatedWhatsChanged, projectStatusAtReport }) {
     if (!isFinalStatus(projectStatusAtReport))
       throw new Error('A report cannot be saved until the project status has been finalised (On Track, At Risk, Blocked or Off Track).')
     const generatedAtValue = isIsoTimestamp(generatedAt) ? generatedAt : null // never substituted with the save time
@@ -278,6 +278,9 @@ export const actions = {
       generation: generationValue,
       assessment: assessmentValue,
       statusDecision,
+      // What Changed Since Last Report: the final version (the PM may remove items) and as the AI produced it.
+      whatsChanged: withHealthMovement(cleanWhatsChanged(whatsChanged), state.reports, projectStatusAtReport),
+      generatedWhatsChanged: withoutHealthMovement(cleanWhatsChanged(generatedWhatsChanged)),
       content: structuredClone(content),
       provenance: {
         generatedAt: generatedAtValue ? 'recorded' : 'unknown',
@@ -399,6 +402,20 @@ export const actions = {
     })
     return { removedProjects, removedReports, keptProjects: kept.length }
   },
+}
+
+// Project health movement is added here, by the app, from two PM-finalised statuses: the status finalised on the
+// report this was compared with, and the status the PM has just finalised. Whatever the caller sent is ignored,
+// and no AI recommendation is ever used.
+function withHealthMovement(wc, reports, currentStatus) {
+  if (!wc || wc.status !== 'compared') return wc && { ...wc, healthMovement: undefined }
+  const base = reports.find((r) => r.id === wc.baseline?.reportId)
+  return { ...wc, healthMovement: computeHealthMovement(base?.projectStatusAtReport, currentStatus) }
+}
+const withoutHealthMovement = (wc) => {
+  if (!wc) return wc
+  const { healthMovement: _ignored, ...rest } = wc
+  return rest
 }
 
 export const hasDemo = (s) => s.projects.some((p) => p.demo) || s.reports.some((r) => r.demo)

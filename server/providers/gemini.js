@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from '@google/genai'
 import { SYSTEM_PROMPT, SECTIONS } from '../prompt.js'
 
 const list = { type: Type.ARRAY, items: { type: Type.STRING } }
-const schema = {
+const baseSchema = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING },
@@ -34,15 +34,41 @@ const schema = {
   required: ['title', ...SECTIONS.map((s) => s.key), 'assessment'],
 }
 
+// With a previous report to compare against, the answer must also contain "changes".
+const changeSchema = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      category: { type: Type.STRING, enum: ['newDevelopments', 'completedResolved', 'continuingBlockers', 'risks', 'progress', 'nextSteps', 'executiveActions'] },
+      state: { type: Type.STRING, enum: ['new', 'continuing', 'resolved', 'changed', 'unclear'] },
+      text: { type: Type.STRING },
+      currentQuote: { type: Type.STRING },
+      previousQuote: { type: Type.STRING },
+    },
+    required: ['category', 'state', 'text', 'currentQuote', 'previousQuote'],
+  },
+}
+const schemaFor = (withComparison) =>
+  withComparison
+    ? { ...baseSchema, properties: { ...baseSchema.properties, changes: changeSchema }, required: [...baseSchema.required, 'changes'] }
+    : baseSchema
+
 // The project description is background context only, kept separate from the submitted update.
-export function buildPrompt({ updates, projectName, projectDescription, projectStatus, audience, periodStart, periodEnd }) {
+// The previous report is shown for comparison only. It uses ~~~ markers so it can never be confused with the update.
+const previousBlock = (p) =>
+  p
+    ? `\nPrevious report (for comparison only; reporting period ${p.periodStart ? `${p.periodStart} to ` : 'ending '}${p.periodEnd}):\n~~~\n${p.promptText}\n~~~\n`
+    : ''
+
+export function buildPrompt({ updates, projectName, projectDescription, projectStatus, audience, periodStart, periodEnd, previousReport }) {
   const period = periodStart && periodEnd ? `${periodStart} to ${periodEnd}` : 'Not specified'
   return `Project: ${projectName || 'Not specified'}
 Project description (background context only): ${projectDescription || 'Not specified'}
 Current confirmed project status (background context only): ${projectStatus || 'Not set'}
 Audience: ${audience || 'Executive stakeholders'}
 Reporting period: ${period}
-
+${previousBlock(previousReport)}
 Rough updates:
 """
 ${updates}
@@ -65,7 +91,7 @@ export function createGeminiProvider({ apiKey, model, timeoutMs = 45_000 }) {
           config: {
             systemInstruction: SYSTEM_PROMPT,
             responseMimeType: 'application/json',
-            responseSchema: schema,
+            responseSchema: schemaFor(!!input.previousReport),
             temperature: 0.3,
             // Never let a stalled provider hold the request open indefinitely
             abortSignal: AbortSignal.timeout(timeoutMs),

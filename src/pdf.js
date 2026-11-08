@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf'
-import { SECTIONS, itemsOf, metaLines } from './sections.js'
+import { SECTIONS, itemsOf, metaLines, whatsChangedView } from './sections.js'
 
 export function downloadPdf(r, meta = {}) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
@@ -44,6 +44,46 @@ export function downloadPdf(r, meta = {}) {
       })
       if (!s.text) y += 3
     }
+    y += 14
+  }
+  // Eighth section: What Changed Since Last Report
+  const wc = whatsChangedView(meta.whatsChanged)
+  if (wc) {
+    ensure(40)
+    doc.setTextColor(217, 76, 155).setFont('helvetica', 'bold').setFontSize(12)
+    doc.text(wc.heading, M, y)
+    y += 8
+    doc.setDrawColor(217, 76, 155)
+    doc.line(M, y, M + 36, y)
+    y += 16
+    doc.setTextColor(36, 27, 41).setFont('helvetica', 'normal').setFontSize(10.5)
+    const para = (t) => {
+      doc.splitTextToSize(t, maxW).forEach((line) => {
+        ensure(15)
+        doc.text(line, M, y)
+        y += 15
+      })
+    }
+    if (wc.baseline) para(wc.baseline)
+    if (wc.message) para(wc.message)
+    for (const g of wc.groups) {
+      ensure(30)
+      doc.setFont('helvetica', 'bold').setFontSize(10.5)
+      doc.text(g.label, M, y)
+      y += 15
+      doc.setFont('helvetica', 'normal')
+      for (const item of g.items) {
+        doc.splitTextToSize(`${item.stateLabel ? `${item.stateLabel}: ` : ''}${item.text}`, maxW - 14).forEach((line, i) => {
+          ensure(15)
+          if (i === 0) doc.text('•', M + 2, y)
+          doc.text(line, M + 14, y)
+          y += 15
+        })
+        y += 3
+      }
+      y += 4
+    }
+    wc.notes.forEach((n) => para(`Note: ${n}`))
     y += 14
   }
   const name = (meta.projectName || r.title || 'status-report').replace(/[^\w-]+/g, '-').toLowerCase()

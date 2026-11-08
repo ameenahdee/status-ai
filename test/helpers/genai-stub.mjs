@@ -7,6 +7,11 @@
 //   (unset)        a default "At Risk" assessment quoting the first line of the submitted update
 //   omit           the answer has no assessment at all
 //   <json>         that JSON is used as the assessment (to test every outcome and bad evidence)
+// The "changes" (What Changed) are only returned when the prompt contains a previous report, like the real
+// model would, and are controlled with TEST_GENAI_CHANGES:
+//   (unset)        one "new" change quoting the first line of the submitted update
+//   omit           the answer has no "changes" at all
+//   <json>         that JSON array is used as the changes
 // Every Gemini request is logged to stdout as `[stub] {json}` so tests can inspect what was sent.
 const GEMINI_HOST = 'https://generativelanguage.googleapis.com/'
 const mode = process.env.TEST_GENAI_MODE || 'ok'
@@ -36,6 +41,15 @@ function assessmentFor(prompt) {
     evidence: [{ source: 'update', quote: firstLine }],
     missingInformation: ['Stubbed missing information'],
   }
+}
+
+function changesFor(prompt) {
+  if (!String(prompt ?? '').includes('Previous report (for comparison only')) return undefined
+  const setting = process.env.TEST_GENAI_CHANGES
+  if (setting === 'omit') return undefined
+  if (setting) return JSON.parse(setting)
+  const firstLine = updateFrom(prompt).split('\n')[0].trim()
+  return [{ category: 'newDevelopments', state: 'new', text: 'Stubbed new development.', currentQuote: firstLine, previousQuote: '' }]
 }
 
 const json = (status, body) =>
@@ -74,7 +88,7 @@ globalThis.fetch = async (input, init = {}) => {
 
   switch (mode) {
     case 'ok':
-      return answer(JSON.stringify({ ...REPORT, assessment: assessmentFor(body?.contents?.[0]?.parts?.[0]?.text) }))
+      return answer(JSON.stringify({ ...REPORT, assessment: assessmentFor(body?.contents?.[0]?.parts?.[0]?.text), changes: changesFor(body?.contents?.[0]?.parts?.[0]?.text) }))
     case '503':
       return json(503, { error: { code: 503, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } })
     case '429':

@@ -1,12 +1,25 @@
 import { useState } from 'react'
 import { useStore, actions, STATUSES } from './store.js'
 import { navigate, scrollToId } from './router.js'
-import { fmtPeriod, fmtStamp } from './sections.js'
+import { fmtPeriod, fmtStamp, stakeholderChanges } from './sections.js'
+import { comparisonBaselineFor } from './history.js'
+import WhatsChanged from './WhatsChanged.jsx'
 import { ReportBody, ExportButtons, StatusBadge } from './ui.jsx'
-import { isFinalStatus } from './schema.js'
+import { isFinalStatus, computeHealthMovement } from './schema.js'
 import SaveCopyDialog from './SaveCopy.jsx'
 import AssessmentPanel from './Assessment.jsx'
 import { SAMPLE_SCENARIO, samplePeriod } from './samples.js'
+
+// Combines the baseline the app chose with what the server verified. A comparison is only 'compared' when BOTH exist.
+function buildWhatsChanged(baseline, server) {
+  const empty = { baseline: null, notes: [], items: [] }
+  if (baseline.status === 'none') return { status: 'none', ...empty }
+  if (baseline.status === 'found' && server?.status === 'compared' && Array.isArray(server.items)) {
+    const b = baseline.report
+    return { status: 'compared', baseline: { reportId: b.id, periodStart: b.periodStart, periodEnd: b.periodEnd }, notes: baseline.notes, items: server.items }
+  }
+  return { status: 'unavailable', ...empty }
+}
 
 const STATUS_REQUIRED = 'Choose the final project status before saving or sharing this report.'
 
@@ -55,6 +68,9 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
     setError('')
     setLoading(true)
     try {
+      // The previous valid report of this project, chosen by the shared history rules (period end, no demo or
+      // sample copies, never this report). Its saved content is sent so the same AI call can say what changed.
+      const baseline = comparisonBaselineFor(store, { projectId: project.id, periodStart, periodEnd })
       const res = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,6 +82,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           audience: project.audience,
           periodStart,
           periodEnd,
+          previousReport: baseline.status === 'found' ? { periodStart: baseline.report.periodStart, periodEnd: baseline.report.periodEnd, content: baseline.report.content } : undefined,
         }),
         signal: AbortSignal.timeout(70_000), // server gives up at 45s; this is the safety net
       })
@@ -85,7 +102,8 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
       }
       // `generated` keeps the AI's output exactly as received; `content` is what the PM then edits.
       // generatedAt is the server's time of generation (not when the PM saves, and not the browser's clock).
-      setDraft({ content: data.report, generated: structuredClone(data.report), original: data.original, generatedAt: data.generatedAt ?? null, generation: { model: data.model ?? null, promptVersion: data.promptVersion ?? null }, assessment: data.assessment ?? null, isSample: false })
+      const whatsChanged = buildWhatsChanged(baseline, data.whatsChanged)
+      setDraft({ whatsChanged, generatedWhatsChanged: structuredClone(whatsChanged), previousHealth: baseline.status === 'found' ? baseline.report.projectStatusAtReport ?? null : null, comparedFor: { projectId: project.id, periodStart, periodEnd }, content: data.report, generated: structuredClone(data.report), original: data.original, generatedAt: data.generatedAt ?? null, generation: { model: data.model ?? null, promptVersion: data.promptVersion ?? null }, assessment: data.assessment ?? null, isSample: false })
       setStatus('') // nothing is pre-selected: the PM must finalise the status before saving
       scrollToId('draft')
     } catch (e) {
@@ -123,7 +141,8 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
   }
 
   function save() {
-    const err = !project ? 'Choose a project above to save this report to.' : !isFinalStatus(status) ? STATUS_REQUIRED : periodError()
+    const stale = !draft.isSample && draft.comparedFor && (draft.comparedFor.projectId !== project?.id || draft.comparedFor.periodStart !== periodStart || draft.comparedFor.periodEnd !== periodEnd)
+    const err = !project ? 'Choose a project above to save this report to.' : !isFinalStatus(status) ? STATUS_REQUIRED : stale ? 'The project or reporting period changed after this report was generated, so its comparison with the previous report no longer matches. Generate the report again.' : periodError()
     if (err) return setSaveError(err)
     setSaveError('')
     const report = actions.addReport({
@@ -137,6 +156,8 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
       generatedAt: draft.generatedAt,
       generation: draft.generation,
       assessment: draft.assessment,
+      whatsChanged: draft.whatsChanged,
+      generatedWhatsChanged: draft.generatedWhatsChanged,
       projectStatusAtReport: status,
     })
     // Only the PM's choice changes the project's status. Choosing the AI's recommended status is recorded as
@@ -148,6 +169,12 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
     navigate(`/reports/${report.id}?saved=1`)
   }
 
+  // The comparison as shown and exported while drafting: project health movement uses the previous report's
+  // finalised status and the status the PM has chosen now (nothing until they choose). The store recomputes it on save.
+  const shownChanges =
+    draft && !draft.isSample && draft.whatsChanged?.status === 'compared'
+      ? { ...draft.whatsChanged, healthMovement: computeHealthMovement(draft.previousHealth, status) }
+      : draft?.whatsChanged
   const meta = {
     projectName: project?.name,
     periodStart,
@@ -156,8 +183,12 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
     isSample: draft?.isSample,
     // exported only once the PM has finalised a status
     projectHealth: !draft?.isSample && isFinalStatus(status) ? status : null,
+    whatsChanged: draft?.isSample ? null : stakeholderChanges(shownChanges),
   }
   const finalised = isFinalStatus(status)
+  // The PM can remove a change they do not agree with; nothing can be added or reworded.
+  const removeChange = (index) =>
+    setDraft((d) => ({ ...d, whatsChanged: { ...d.whatsChanged, items: d.whatsChanged.items.filter((_, i) => i !== index) } }))
   const notFinal = !!draft && !draft.isSample && !finalised
   const statusChanges = status && project && status !== project.status
 
@@ -260,6 +291,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
             editing
             onChange={(k, v) => setDraft((d) => ({ ...d, content: { ...d.content, [k]: v } }))}
           />
+          {!draft.isSample && <WhatsChanged value={shownChanges} onRemove={removeChange} />}
           {!draft.isSample && <AssessmentPanel assessment={draft.assessment} currentStatus={project?.status} chosenStatus={status} onUse={setStatus} />}
           {!draft.isSample && (
             <div className="savebar">

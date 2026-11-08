@@ -50,7 +50,8 @@ export const validReportV2 = (r) =>
   optStr(r.title) && optStr(r.originalUpdate) && optStr(r.periodStart) && optStr(r.periodEnd) &&
   validContent(r.content) && (r.generatedContent == null || validContent(r.generatedContent)) &&
   (r.provenance == null || isObject(r.provenance)) && validGeneration(r.generation) &&
-  validAssessment(r.assessment) && validStatusDecision(r.statusDecision)
+  validAssessment(r.assessment) && validStatusDecision(r.statusDecision) &&
+  validWhatsChanged(r.whatsChanged) && validWhatsChanged(r.generatedWhatsChanged)
 
 // ---- project health assessment ----
 // "Insufficient Information" is an assessment outcome, NOT a project status (it can never become a project's status).
@@ -83,6 +84,56 @@ export function cleanAssessment(a) {
     evidence: a.evidence.map((e) => ({ source: e.source, quote: e.quote })),
     missingInformation: [...a.missingInformation],
     checks: isObject(a.checks) ? structuredClone(a.checks) : undefined,
+  }
+}
+
+// ---- What Changed Since Last Report ----
+// A comparison with the previous report of the same project. It is stakeholder-facing (the `text` of each item),
+// and keeps its `evidence` quotes for the PM only. status: 'none' (no previous report), 'compared', or
+// 'unavailable' (a previous report existed but a reliable comparison could not be made). Only 'compared' has items
+// and a baseline, so a comparison can never be stored without the report it was made against.
+export const CHANGE_CATEGORIES = ['newDevelopments', 'completedResolved', 'continuingBlockers', 'risks', 'progress', 'nextSteps', 'executiveActions']
+export const CHANGE_STATES = ['new', 'continuing', 'resolved', 'changed', 'unclear']
+export const WHATS_CHANGED_STATUSES = ['none', 'compared', 'unavailable']
+
+// Project health movement: the PM-finalised status of the previous report against the PM-finalised status of this
+// one. It is worked out by the app, never by the AI, and an AI recommendation is never used as either status.
+//   moved / unchanged             both statuses are known
+//   previous-not-recorded         the previous report has no finalised status (for example an older report)
+//   current-not-set               the PM has not finalised this report's status yet (nothing is shown or exported)
+export const HEALTH_CHANGES = ['moved', 'unchanged', 'previous-not-recorded', 'current-not-set']
+export function computeHealthMovement(previous, current) {
+  const p = isFinalStatus(previous) ? previous : null
+  const c = isFinalStatus(current) ? current : null
+  const change = !c ? 'current-not-set' : !p ? 'previous-not-recorded' : p === c ? 'unchanged' : 'moved'
+  return { previous: p, current: c, change }
+}
+const validHealthMovement = (m) =>
+  isObject(m) && (m.previous == null || STATUSES.includes(m.previous)) && (m.current == null || STATUSES.includes(m.current)) && HEALTH_CHANGES.includes(m.change)
+
+const validChange = (c) =>
+  isObject(c) && CHANGE_CATEGORIES.includes(c.category) && CHANGE_STATES.includes(c.state) && isStr(c.text) && c.text.trim() !== '' &&
+  (c.evidence == null || (isObject(c.evidence) && optStr(c.evidence.current) && optStr(c.evidence.previous)))
+
+export const validWhatsChanged = (w) =>
+  w == null ||
+  (isObject(w) && WHATS_CHANGED_STATUSES.includes(w.status) &&
+    (w.notes == null || (Array.isArray(w.notes) && w.notes.every(isStr))) &&
+    Array.isArray(w.items) && w.items.every(validChange) &&
+    (w.healthMovement == null || (w.status === 'compared' && validHealthMovement(w.healthMovement))) &&
+    (w.status === 'compared'
+      ? isObject(w.baseline) && isStr(w.baseline.periodEnd) && optStr(w.baseline.reportId) && optStr(w.baseline.periodStart)
+      : w.baseline == null && w.items.length === 0))
+
+// Keeps a well-formed comparison (as a copy) and drops anything else. Never repairs or guesses.
+export function cleanWhatsChanged(w) {
+  if (w == null || !validWhatsChanged(w)) return null
+  return {
+    status: w.status,
+    baseline: w.baseline ? { reportId: w.baseline.reportId ?? null, periodStart: w.baseline.periodStart ?? '', periodEnd: w.baseline.periodEnd } : null,
+    notes: [...(w.notes ?? [])],
+    ...(w.healthMovement ? { healthMovement: { previous: w.healthMovement.previous ?? null, current: w.healthMovement.current ?? null, change: w.healthMovement.change } } : {}),
+    items: w.items.map((i) => ({ category: i.category, state: i.state, text: i.text, evidence: i.evidence ? { current: i.evidence.current ?? null, previous: i.evidence.previous ?? null } : null })),
   }
 }
 

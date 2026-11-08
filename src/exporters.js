@@ -1,4 +1,4 @@
-import { reportToText } from './sections.js'
+import { reportToText, stakeholderChanges } from './sections.js'
 import { isFinalStatus } from './schema.js'
 
 export const metaOf = (report, project) => ({
@@ -10,6 +10,8 @@ export const metaOf = (report, project) => ({
   isSample: !!(report.demo || report.sampleCopy), // illustrative reports are marked in copy/PDF/email
   // Only the status the PM finalised for this report. Illustrative reports carry none, and nothing from the
   // AI assessment is ever exported.
+  // The comparison with the previous report (stakeholder text only; its evidence quotes are not exported).
+  whatsChanged: report.demo || report.sampleCopy ? null : stakeholderChanges(report.whatsChanged),
   projectHealth: !(report.demo || report.sampleCopy) && isFinalStatus(report.projectStatusAtReport) ? report.projectStatusAtReport : null,
 })
 

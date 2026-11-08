@@ -94,7 +94,7 @@ describe('Project Health in exports', () => {
 
   it('the metadata object itself carries nothing from the assessment', () => {
     const m = metaOf(live(), project)
-    assert.deepEqual(Object.keys(m).sort(), ['generatedAt', 'isSample', 'periodEnd', 'periodStart', 'projectHealth', 'projectName', 'savedAt'])
+    assert.deepEqual(Object.keys(m).sort(), ['generatedAt', 'isSample', 'periodEnd', 'periodStart', 'projectHealth', 'projectName', 'savedAt', 'whatsChanged'])
   })
 
   describe('email draft', () => {

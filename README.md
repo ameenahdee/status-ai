@@ -14,6 +14,7 @@ Status AI is deliberately **not** a project management platform. Projects exist 
 - **AI Project Health Assessment**: when a report is generated, the same AI call also recommends a project health status (On Track, At Risk, Blocked or Off Track) or says "Insufficient Information", which is a separate outcome and not a status. The recommendation comes with supporting evidence, an explanation and any missing information, and appears beside the generated report as internal decision support. Evidence must be verbatim quotes from the submitted update, the project description or the current confirmed status; anything the server cannot find in that text is removed, and a status with no verified quote from the update is downgraded to "Insufficient Information". The AI only recommends and never changes a status.
 - **The PM finalises the status before saving.** A generated report cannot be saved, copied, emailed or exported until the project manager has explicitly chosen a final status, either by accepting the recommendation or by choosing a different one. Nothing is pre-selected, the project's previous status is not reused, and the AI recommendation alone never counts. Choosing a status that differs from the project's current one is recorded in the project's status history (as "AI-confirmed" when the PM accepted the recommendation, otherwise as set from the report). The guard is enforced in the store as well as on screen.
 - **Internal assessment vs stakeholder output**: the AI recommendation, evidence, explanation, the PM's decision (confirmed or overridden) and the model and prompt version are stored with the report for traceability and are never exported. Copy, PDF and email show only the final status, written as "Project Health: At Risk" (or On Track, Blocked, Off Track) under the project name. Sample and demo reports carry no health line.
+- **What Changed Since Last Report**: the same generation call also compares the update with the previous valid report for the same project, and the result is saved with the report as an eighth section after the seven (never merged into them). It appears in the report on screen, the saved report, copy, email and PDF under the exact heading "What Changed Since Last Report". Changes are grouped as New developments, Completed or resolved, Continuing blockers, Changing risks, Progress, Next steps and Executive actions (empty groups are not shown), and each is marked New, Continuing, Resolved, Update or Status unclear. It also shows project health movement as its first line ("Project Health moved from At Risk to Blocked.", "Project Health is unchanged: On Track.", or a note that the previous status was not recorded), worked out by the app from the two PM-finalised statuses only (the status finalised on the previous report and the one you finalise now). An AI recommendation is never used for this, and the line appears once you have finalised a status. The previous report is chosen with the same history rules as everywhere else: same project, by reporting-period END date (not save time), never demo reports or sample copies, never the report itself, with duplicate, overlapping and back-dated periods handled and noted. Every change must quote the update (and, for continuing, resolved or changed items, the previous report) verbatim or it is removed. Something that is simply missing from the update is never called resolved; at most it is shown as "Status unclear". A first report says "No previous report available for comparison.", and if a comparison cannot be made reliably the report says so instead of inventing changes. The PM can remove a change before saving. Only the change text is exported; the evidence quotes stay with the PM.
 - **Reporting periods** kept separate from the generation date, with validation that the end date is not before the start date.
 - **Original updates preserved** alongside every report, and never changed when a report is edited.
 - **Reports library** with All, Recent and By Project views, search, and per-report actions: open, edit, copy, export PDF, email draft, delete (with confirmation).
@@ -150,6 +151,7 @@ src/                 React app (hash-routed, no router dependency)
   Reports.jsx        Reports library and report view
   Composer.jsx       New report flow (live generation and sample generation, mandatory final status)
   Assessment.jsx     Internal AI health assessment panel (recommendation and PM decision)
+  WhatsChanged.jsx   The eighth section: What Changed Since Last Report
   SaveCopy.jsx       "Save a Copy" dialog for sample and demo reports
   store.js           localStorage-backed store and actions
   schema.js          Storage schema version, validators, migration, assessment and decision rules
@@ -163,6 +165,7 @@ server/
   limits.js          Per-IP rate limiter (with pruning) and global daily cap
   prompt.js          System prompt, section definitions and PROMPT_VERSION
   assessment.js      Checks the AI health assessment (verbatim evidence, downgrade rules)
+  comparison.js      Checks the AI's What Changed items against the update and the previous report
   providers/
     index.js         Provider selection (AI_PROVIDER)
     gemini.js        Gemini implementation
@@ -187,7 +190,7 @@ A report keeps these independently:
 
 **Status history** (`statusHistory`): each change records `projectId`, `previousStatus`, `newStatus`, `at`, `source` and the associated `reportId`. Allowed sources are `manual`, `report` and `ai-confirmed` (an AI recommendation that the PM accepted). An AI recommendation on its own is never a status change.
 
-**Historical selection** (`src/history.js`, for the future "What's Changed"; no UI yet): same project only; ordered by reporting-period end date (not save time); demo reports and saved sample copies are excluded; exact duplicate periods, overlapping periods and back-filled reports are flagged explicitly (a back-filled report is never treated as the latest); a missing item is never assumed resolved.
+**Historical selection** (`src/history.js`, for the future "What Changed"; no UI yet): same project only; ordered by reporting-period end date (not save time); demo reports and saved sample copies are excluded; exact duplicate periods, overlapping periods and back-filled reports are flagged explicitly (a back-filled report is never treated as the latest); a missing item is never assumed resolved.
 
 **Migration.** Version 1 data is migrated automatically on load. Nothing is dropped, ids and associations are kept, and nothing is invented: an old report's `generatedAt` (which was really the save time) becomes `savedAt`, the AI generation time stays `null`/`unknown`, and the original AI output is recovered only for live reports that were never edited. Before the first migration the original data is copied once to `statusai.v1.pre-v2` (never overwritten). Data saved by a newer version of the app is left untouched and not overwritten (a warning banner explains).
 
@@ -199,6 +202,7 @@ A report keeps these independently:
 - If the browser cannot save (storage full or blocked, for example in a private window), a warning banner says so and success messages are replaced by a "NOT saved" warning. If saved data cannot be read, the app does not overwrite it. Data that cannot be loaded is set aside in a second storage key (`statusai.v1.set-aside`), not deleted.
 - When you generate a report, the update text, project name, project description, audience and reporting period are sent to your server and then to the Gemini API. Do not submit confidential information you are not permitted to share with that provider.
 - Demo content is entirely fictional and illustrative.
+- To compare with the previous report, the saved text of that report (its seven sections, and its reporting period) is also sent to your server and then to the Gemini API in the same request. Only the previous report of the same project is sent, never its original update, the assessment, or other projects. Nothing is sent for a first report.
 - The health assessment sends nothing extra: it uses the project description, the current confirmed status and the update, which are already part of the generation request.
 - The assessment is stored in your browser with the report as an internal record. It is never included in copy, PDF or email output.
 - AI-generated content can contain mistakes. Review before sharing.
@@ -215,6 +219,8 @@ The server sends basic security headers (including a Content Security Policy tha
 
 - Local-only storage; no accounts, sync or collaboration.
 - The health assessment is a recommendation. Its evidence check confirms that quotes really appear in your text; it does not prove that the conclusion is right. The PM owns the final status.
+- What Changed checks that quotes really appear in the update and the previous report; it cannot prove that the AI's wording of a change is correct, so the PM reviews it and can remove items (but not edit them). It compares with one previous report only, and uses its saved text, so it can only be as good as that report.
+- Reports saved before this feature, demo reports and sample copies have no What Changed section. If the previous report has no finalised status (for example an older report), health movement says its previous status was not recorded rather than guessing.
 - Sample reports and Save a Copy do not include a health assessment, and the store-level status requirement applies only to reports generated and saved through the normal flow.
 - Reports saved before the assessment feature have no assessment, and may have no recorded status; their exports simply omit the health line.
 - Automated tests cover the data layer and API but not the React UI (see Testing).

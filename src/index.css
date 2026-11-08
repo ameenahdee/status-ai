@@ -271,3 +271,17 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .assessment .evidence li{margin-bottom:4px}
 .assessment q{quotes:"\201C" "\201D";overflow-wrap:anywhere}
 .assessment-decision{margin-top:12px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+
+/* What Changed Since Last Report (stakeholder-facing eighth section) */
+.whatschanged{border-top:1px solid var(--line);margin-top:20px;padding-top:16px}
+.whatschanged h3{margin:0 0 6px;font-size:15px}
+.whatschanged h4{margin:12px 0 4px;font-size:13px}
+.whatschanged ul{margin:0;padding-left:20px}
+.whatschanged li{margin-bottom:6px}
+.change-state{display:inline-block;border-radius:999px;font-size:11px;font-weight:700;padding:1px 8px;background:var(--surface2);color:var(--plum);white-space:nowrap}
+.change-state.s-resolved{background:#E6F4EA;color:#1E6B34}
+.change-state.s-unclear{background:#FFF4E0;color:#8A5A00}
+.linklike{background:none;border:0;padding:0 0 0 8px;color:var(--muted);text-decoration:underline;cursor:pointer;font:inherit;font-size:12.5px}
+.change-evidence{margin:4px 0 0;font-size:12.5px;color:var(--muted)}
+.change-evidence summary{cursor:pointer}
+.change-evidence q{overflow-wrap:anywhere}

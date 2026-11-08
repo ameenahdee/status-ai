@@ -1,5 +1,5 @@
 // Reading project history from stored data. Pure functions (no React, no storage), used by the
-// upcoming "What's Changed" feature. They never modify anything.
+// upcoming "What Changed" feature. They never modify anything.
 //
 // Rules (agreed for historical report selection):
 //   1. Only reports of the SAME project are compared.
@@ -106,6 +106,24 @@ export function previousReportFor(state, target) {
   }
   const needsReview = flags.duplicatePeriods.length > 0 || overlapsPrevious || targetIsBackFilled || sharedEndDate.length > 0
   return { status: 'found', reason: null, report: previous, needsReview, flags }
+}
+
+/**
+ * Which saved report a NEW (or saved) report should be compared with for "What Changed Since Last Report".
+ * It is exactly previousReportFor (same project, by period END, never demo or sample copies, never the report itself,
+ * duplicates collapsed), plus plain-language notes for anything uncertain about that choice.
+ * Returns { status: 'found' | 'none' | 'unavailable', report, notes: string[], reason }.
+ */
+export function comparisonBaselineFor(state, target) {
+  const res = previousReportFor(state, target)
+  if (res.status !== 'found') return { status: res.status === 'none' ? 'none' : 'unavailable', report: null, notes: [], reason: res.reason }
+  const f = res.flags
+  const notes = []
+  if (f.duplicatePeriods.length) notes.push('More than one report exists for the previous reporting period; the most recently saved one was used.')
+  if (f.overlapsPrevious) notes.push('The previous report\'s reporting period overlaps this one.')
+  if (f.targetIsBackFilled) notes.push('A report for a later period already exists; this report was compared with the report before it.')
+  if (f.sharedEndDate.length) notes.push('Several earlier reports end on the same date; the most recent period was used.')
+  return { status: 'found', report: res.report, notes, reason: null }
 }
 
 // Whether the report a status-history entry refers to can still be opened.

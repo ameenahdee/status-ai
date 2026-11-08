@@ -11,7 +11,7 @@ const STUB = pathToFileURL(path.join(here, 'genai-stub.mjs')).href
 
 // Environment the app reads. Cleared before every test server so nothing leaks in from the
 // developer's machine (real keys, models, flags).
-const APP_ENV = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_PROVIDER', 'LIVE_GENERATION_ENABLED', 'DAILY_REQUEST_CAP', 'NODE_ENV', 'PORT', 'TEST_GENAI_MODE']
+const APP_ENV = ['GEMINI_API_KEY', 'GEMINI_MODEL', 'GEMINI_TIMEOUT_MS', 'AI_PROVIDER', 'LIVE_GENERATION_ENABLED', 'DAILY_REQUEST_CAP', 'NODE_ENV', 'PORT', 'TEST_GENAI_MODE', 'TEST_GENAI_ASSESSMENT', 'TEST_GENAI_CHANGES']
 
 const freePort = () =>
   new Promise((resolve, reject) => {
