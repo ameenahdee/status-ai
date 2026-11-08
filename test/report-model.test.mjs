@@ -230,9 +230,11 @@ describe('report data model', () => {
       assert.deepEqual([saved(a.id).projectStatusAtReport, saved(b.id).projectStatusAtReport], ['On Track', 'Blocked'])
     })
 
-    it('stores "none" when the PM did not confirm a status, never an invented one', () => {
-      assert.equal(store.actions.addReport(reportInput(project.id, { projectStatusAtReport: '' })).projectStatusAtReport, null)
-      assert.equal(store.actions.addReport(reportInput(project.id, { projectStatusAtReport: undefined })).projectStatusAtReport, null)
+    it('refuses to save when the PM has not finalised a status (nothing is stored, nothing invented)', () => {
+      for (const projectStatusAtReport of ['', undefined, null]) {
+        assert.throws(() => store.actions.addReport(reportInput(project.id, { projectStatusAtReport })), /project status has been finalised/)
+      }
+      assert.deepEqual(persisted().reports, [])
     })
   })
 

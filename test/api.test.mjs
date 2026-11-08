@@ -63,7 +63,7 @@ describe('API: report generation, valid requests', () => {
 
   it('returns only original, report and generatedAt (the original update is never altered)', async () => {
     const res = await srv.request('/api/report', { method: 'POST', json: validBody({ updates: '  keep my spacing  exactly  ' }) })
-    assert.deepEqual(Object.keys(res.body).sort(), ['generatedAt', 'model', 'original', 'promptVersion', 'report'])
+    assert.deepEqual(Object.keys(res.body).sort(), ['assessment', 'generatedAt', 'model', 'original', 'promptVersion', 'report'])
     assert.equal(res.body.original, '  keep my spacing  exactly  ')
   })
 

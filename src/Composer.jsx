@@ -3,8 +3,12 @@ import { useStore, actions, STATUSES } from './store.js'
 import { navigate, scrollToId } from './router.js'
 import { fmtPeriod, fmtStamp } from './sections.js'
 import { ReportBody, ExportButtons, StatusBadge } from './ui.jsx'
+import { isFinalStatus } from './schema.js'
 import SaveCopyDialog from './SaveCopy.jsx'
+import AssessmentPanel from './Assessment.jsx'
 import { SAMPLE_SCENARIO, samplePeriod } from './samples.js'
+
+const STATUS_REQUIRED = 'Choose the final project status before saving or sharing this report.'
 
 // Pure client-side: no network, no backend, no Gemini. structuredClone keeps the original scenario unchanged.
 const makeSampleDraft = () => ({
@@ -42,7 +46,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
 
   function pickProject(id) {
     setProjectId(id)
-    setStatus(store.projects.find((p) => p.id === id)?.status || '')
+    setStatus('') // the PM always chooses the status for a new report; the project's previous status is not reused
   }
 
   async function generate() {
@@ -58,6 +62,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
           updates,
           projectName: project.name,
           projectDescription: project.description,
+          projectStatus: project.status || '',
           audience: project.audience,
           periodStart,
           periodEnd,
@@ -80,8 +85,8 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
       }
       // `generated` keeps the AI's output exactly as received; `content` is what the PM then edits.
       // generatedAt is the server's time of generation (not when the PM saves, and not the browser's clock).
-      setDraft({ content: data.report, generated: structuredClone(data.report), original: data.original, generatedAt: data.generatedAt ?? null, generation: { model: data.model ?? null, promptVersion: data.promptVersion ?? null }, isSample: false })
-      setStatus(project.status || '')
+      setDraft({ content: data.report, generated: structuredClone(data.report), original: data.original, generatedAt: data.generatedAt ?? null, generation: { model: data.model ?? null, promptVersion: data.promptVersion ?? null }, assessment: data.assessment ?? null, isSample: false })
+      setStatus('') // nothing is pre-selected: the PM must finalise the status before saving
       scrollToId('draft')
     } catch (e) {
       setError(
@@ -118,7 +123,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
   }
 
   function save() {
-    const err = !project ? 'Choose a project above to save this report to.' : periodError()
+    const err = !project ? 'Choose a project above to save this report to.' : !isFinalStatus(status) ? STATUS_REQUIRED : periodError()
     if (err) return setSaveError(err)
     setSaveError('')
     const report = actions.addReport({
@@ -131,9 +136,15 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
       generatedContent: draft.generated,
       generatedAt: draft.generatedAt,
       generation: draft.generation,
+      assessment: draft.assessment,
       projectStatusAtReport: status,
     })
-    if (status && status !== project.status) actions.setProjectStatus(project.id, status, { type: 'report', reportId: report.id })
+    // Only the PM's choice changes the project's status. Choosing the AI's recommended status is recorded as
+    // 'ai-confirmed'; anything else the PM chose is recorded as set from this report.
+    if (status && status !== project.status) {
+      const confirmed = report.statusDecision?.action === 'confirmed'
+      actions.setProjectStatus(project.id, status, { type: confirmed ? 'ai-confirmed' : 'report', reportId: report.id })
+    }
     navigate(`/reports/${report.id}?saved=1`)
   }
 
@@ -143,7 +154,11 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
     periodEnd,
     generatedAt: draft?.generatedAt,
     isSample: draft?.isSample,
+    // exported only once the PM has finalised a status
+    projectHealth: !draft?.isSample && isFinalStatus(status) ? status : null,
   }
+  const finalised = isFinalStatus(status)
+  const notFinal = !!draft && !draft.isSample && !finalised
   const statusChanges = status && project && status !== project.status
 
   return (
@@ -224,9 +239,9 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
               <span className="faint"> · editable</span>
             </h2>
             <div className="actions">
-              {!draft.isSample && <button className="primary" onClick={save}>Save Report</button>}
+              {!draft.isSample && <button className="primary" onClick={save} disabled={!finalised} title={finalised ? undefined : STATUS_REQUIRED}>Save Report</button>}
               {draft.isSample && <button className="primary" onClick={() => setCopying(true)}>Save a Copy</button>}
-              <ExportButtons content={draft.content} meta={meta} />
+              <ExportButtons content={draft.content} meta={meta} disabledReason={notFinal ? STATUS_REQUIRED : ''} />
             </div>
           </div>
           {draft.isSample && (
@@ -245,6 +260,7 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
             editing
             onChange={(k, v) => setDraft((d) => ({ ...d, content: { ...d.content, [k]: v } }))}
           />
+          {!draft.isSample && <AssessmentPanel assessment={draft.assessment} currentStatus={project?.status} chosenStatus={status} onUse={setStatus} />}
           {!draft.isSample && (
             <div className="savebar">
               <p><strong>Save this report</strong></p>
@@ -253,9 +269,9 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
                   ? <>Saves to <strong>{project.name}</strong> with your original update and reporting period ({fmtPeriod(periodStart, periodEnd)}). It will appear in Reports and in the project’s history.</>
                   : 'Choose a project above to save this report.'}
               </p>
-              <label>Project status for this report
+              <label>Final project status for this report (required)
                 <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                  <option value="">Not set</option>
+                  <option value="" disabled>Select the final status…</option>
                   {STATUSES.map((s) => <option key={s}>{s}</option>)}
                 </select>
               </label>
@@ -264,7 +280,8 @@ export default function Composer({ projectId: fixedProjectId, sample = false }) 
                   The project’s status will change from <StatusBadge status={project.status} /> to <StatusBadge status={status} /> (source: this report).
                 </p>
               )}
-              <button className="primary" onClick={save}>Save Report</button>
+              {!finalised && <p className="faint" role="status">{STATUS_REQUIRED}</p>}
+              <button className="primary" onClick={save} disabled={!finalised}>Save Report</button>
             </div>
           )}
         </section>

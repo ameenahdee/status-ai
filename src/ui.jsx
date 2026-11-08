@@ -167,15 +167,17 @@ export function ReportBody({ content, editing, onChange }) {
 }
 
 // Copy / Email / PDF buttons for any content + meta
-export function ExportButtons({ content, meta }) {
+// `disabledReason`: exporting is blocked (for example until the PM has finalised the project status).
+export function ExportButtons({ content, meta, disabledReason = '' }) {
   const [copied, setCopied] = useState(false)
+  const off = !!disabledReason
   return (
     <>
-      <button className="ghost" onClick={async () => { await copyReport(content, meta); setCopied(true); setTimeout(() => setCopied(false), 1800) }}>
+      <button className="ghost" disabled={off} title={disabledReason || undefined} onClick={async () => { await copyReport(content, meta); setCopied(true); setTimeout(() => setCopied(false), 1800) }}>
         {copied ? 'Copied ✓' : 'Copy report'}
       </button>
-      <button className="ghost" onClick={() => emailReport(content, meta)}>Email draft</button>
-      <button className="ghost" onClick={() => exportPdf(content, meta)}>Export PDF</button>
+      <button className="ghost" disabled={off} title={disabledReason || undefined} onClick={() => emailReport(content, meta)}>Email draft</button>
+      <button className="ghost" disabled={off} title={disabledReason || undefined} onClick={() => exportPdf(content, meta)}>Export PDF</button>
     </>
   )
 }

@@ -13,8 +13,8 @@ import { cleanGeneration, validReportV2 } from '../src/schema.js'
 // Pinned so that the prompt cannot change without PROMPT_VERSION being bumped. If this fails you changed the
 // prompt: bump PROMPT_VERSION in server/prompt.js, then update both values below.
 const PINNED = {
-  version: 'report-prompt-2026-11-08.1',
-  sha256: '082d38ce382718edd6e9288c7c56125dcc757410bfaa593da90b2ae58a9d796b',
+  version: 'report-prompt-2026-11-08.2',
+  sha256: '875aaccd8a3c0f0ea6dbe56640b45a56d6603313422ee8ecb561ed9e8bb50bbe',
 }
 
 describe('prompt version', () => {

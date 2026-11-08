@@ -3,6 +3,10 @@
 // Any call to a host other than the Gemini API is blocked and reported, so a stray real call fails loudly.
 //
 // Behaviour is chosen with TEST_GENAI_MODE: ok | 503 | 429 | 500 | badjson | empty | hang
+// The health assessment in the answer is controlled with TEST_GENAI_ASSESSMENT:
+//   (unset)        a default "At Risk" assessment quoting the first line of the submitted update
+//   omit           the answer has no assessment at all
+//   <json>         that JSON is used as the assessment (to test every outcome and bad evidence)
 // Every Gemini request is logged to stdout as `[stub] {json}` so tests can inspect what was sent.
 const GEMINI_HOST = 'https://generativelanguage.googleapis.com/'
 const mode = process.env.TEST_GENAI_MODE || 'ok'
@@ -16,6 +20,22 @@ const REPORT = {
   risks: ['Not specified in the submitted update.'],
   nextSteps: ['Stubbed next step'],
   executiveActionRequired: ['No executive action required at this time.'],
+}
+
+// The submitted update, taken from the prompt the server built (between the triple quotes).
+const updateFrom = (prompt) => (String(prompt ?? '').match(/"""\r?\n([\s\S]*)\r?\n"""/) ?? [])[1] ?? ''
+
+function assessmentFor(prompt) {
+  const setting = process.env.TEST_GENAI_ASSESSMENT
+  if (setting === 'omit') return undefined
+  if (setting) return JSON.parse(setting)
+  const firstLine = updateFrom(prompt).split('\n')[0].trim()
+  return {
+    outcome: 'At Risk',
+    explanation: 'Stubbed explanation based on the update.',
+    evidence: [{ source: 'update', quote: firstLine }],
+    missingInformation: ['Stubbed missing information'],
+  }
 }
 
 const json = (status, body) =>
@@ -54,7 +74,7 @@ globalThis.fetch = async (input, init = {}) => {
 
   switch (mode) {
     case 'ok':
-      return answer(JSON.stringify(REPORT))
+      return answer(JSON.stringify({ ...REPORT, assessment: assessmentFor(body?.contents?.[0]?.parts?.[0]?.text) }))
     case '503':
       return json(503, { error: { code: 503, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } })
     case '429':

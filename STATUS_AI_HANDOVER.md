@@ -12,7 +12,7 @@ Stack	React 19 + Vite, Express 5, Google Gemini via @google/genai, jsPDF, localS
 Deployment	Not deployed. Plan is Render free tier.
 Live Gemini generation	Off by default in production. Needs LIVE_GENERATION_ENABLED=true, and you said not to enable it publicly until Google's terms are reviewed.
 2. Git status and history
-Pushed history (origin/main = b2949e5; the local fourth commit is not pushed):
+Pushed history (origin/main = 9397f90; later AI Project Health Assessment work is uncommitted until approved):
 
 Commit	Message	Content
 1af18f4	Initial Status AI MVP	31 files: app, Gemini provider, projects/reports/demo data model, PDF/copy/email, logo, README
@@ -20,7 +20,7 @@ Commit	Message	Content
 b2949e5	Improve public demo experience	Try a Sample Generation, Save a Copy, honest sample labelling, samples.js, SaveCopy.jsx, README demo docs
 Each commit carries the trailer Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>.
 
-Fourth commit (local only, NOT pushed until approved): "feat: add automated tests, storage reliability, versioned data model and generation metadata". It contains, as one commit, everything listed under "Done and committed in the fourth commit" in section 4: the test suite, the storage reliability fixes, the version 2 data model (schema.js, history.js), generation metadata and safe report deletion, plus this handover. The work was originally planned as three commits, but the stages share the same functions in store.js and the same tests, so they could not be split without writing untested intermediate code.
+Fourth commit (pushed to origin/main as 9397f90): "feat: add automated tests, storage reliability, versioned data model and generation metadata". It contains, as one commit, the test suite, the storage reliability fixes, the version 2 data model (schema.js, history.js), generation metadata and safe report deletion, plus the handover. The work was originally planned as three commits, but the stages share the same functions in store.js and the same tests, so they could not be split without writing untested intermediate code.
 Ignored and local only: .env, dist/, node_modules/. .env has AI_PROVIDER, GEMINI_API_KEY, GEMINI_MODEL, PORT, and GEMINI_MODEL is now gemini-3.5-flash. I never read or modified .env, and I never print the key.
 Line endings: every Git command warns "LF will be replaced by CRLF". It is harmless (core.autocrlf=true).
 3. Architecture
@@ -99,7 +99,7 @@ Projects: createProject, updateProject, setProjectStatus.
 Reports: addReport, saveSampleCopy, updateReportContent, deleteReport.
 Demo and persistence: loadDemo, resetDemo, retrySave.
 Extras: hasDemo, reportsFor (sorted by generatedAt desc), STATUSES, DESCRIPTION_MAX.
-Persistence behaviour (in the local fourth commit, tested)
+Persistence behaviour (committed in 9397f90, tested)
 Failed writes: getPersistence() returns {ok, reason, notice}. A failed write sets reason:'write-failed', keeps the app usable in memory, and recovers on the next successful write or retrySave().
 Unreadable storage: the app sets read-blocked and suspends all writes, so nothing is overwritten.
 Corrupt or malformed data (invalid JSON, wrong shape, or invalid records inside valid lists):
@@ -140,7 +140,7 @@ Fixes that came out of debugging:
 useEffect returning window.scrollTo (blank screen).
 The hanging gemini-3.8-flash model, now fixed with a timeout and a default of gemini-3.5-flash.
 ECONNRESET was caused by that missing timeout.
-Done and committed in the fourth commit (local, not pushed):
+Done and committed in the fourth commit (9397f90, pushed):
 
 Version 2 data model (src/schema.js, src/history.js, src/store.js):
 CURRENT_VERSION = 2 with migrateV1toV2. Version 1 data upgrades on the first write and the raw v1 text is kept in statusai.v1.pre-v2. Nothing is dropped.
@@ -163,8 +163,8 @@ Existing set-aside backup is never overwritten (backup-exists / cannot-preserve)
 test/email-draft.test.mjs: 9 tests of the real emailReport() against a fake window.
 README: Testing section, scripts table, storage/privacy notes, a warning about the Email draft in browser tests.
 5. Testing
-Repo suite (npm test): 463 tests, 463 pass, 0 fail, about 15s. npm run lint is clean and npm run build passes. Mutation checks on throw-away copies confirmed the deletion marking and the generation-metadata storing are each caught by tests (8 and 3 failures when broken).
-Browser verification (headless Edge, 40 of 40 checks passed, last run 2026-11-08): v1 migration (data upgrades on first write, all reports kept, unedited AI output recovered, edited stays unknown, one migrated status anchor that stays single after reload, pre-migration backup kept), report deletion through the UI (history entry kept and marked, project status unchanged, "(since deleted)" shown), and stubbed live generation (one request to the stubbed Gemini and no other host, model and promptVersion recorded, server generatedAt kept distinct from savedAt, generatedContent equals content before editing). The script was browser-check.mjs in the session scratchpad, NOT in the repo, and may be lost.
+Repo suite (npm test): 568 tests, 568 pass, 0 fail, about 15s. npm run lint is clean and npm run build passes. Mutation checks on throw-away copies confirmed that the main rules are each caught by tests when broken: deletion marking, generation metadata, evidence verification, the update-evidence requirement, no default to On Track, the decision action, the Project Health export line, the demo exclusion, and the store-level status guard.
+Browser verification (headless Edge, last run 2026-11-08, no real Gemini call): 41 of 41 for v1 migration, report deletion and stubbed live generation (the live-generation check now chooses a status before saving), and 42 of 42 for the health assessment (panel contents, nothing applied before the PM acts, empty status selector, Save and exports disabled until a status is chosen, Accept recommendation, override, Insufficient Information, invented evidence removed, copied text contains only "Project Health: X", status history source ai-confirmed or report). Scripts were browser-check.mjs and assess-check.mjs in the session scratchpad, NOT in the repo, and may be lost. Email draft was never clicked.
 Earlier history: the first test foundation had 258 tests.
 
 Commands:
@@ -212,7 +212,7 @@ History ordering: reportsFor sorts by save time (generatedAt), not by reporting 
 8. Pending, in priority order
 Needs your approval before anything else:
 
-1. Push the fourth commit to origin/main (it is local only). Nothing is deployed.
+1. Review and approve committing the AI Project Health Assessment work (uncommitted). Nothing is deployed.
 Deployment (not started):
 2. Review Google's current Gemini API terms (age requirements, free-tier data use) and decide an operating arrangement. Keep LIVE_GENERATION_ENABLED unset in production until then.
 3. Render free web service, steps from the earlier audit:
@@ -243,12 +243,12 @@ Known gaps and risks (not yet fixed):
 9. Next phase
 Do not build any of this without approval. Sequence:
 
-Step 0: DONE (test foundation and storage fixes, in the local fourth commit).
+Step 0: DONE (test foundation and storage fixes, commit 9397f90).
 Step 1, data foundation: DONE except the items below.
 Done: schema version and migration in load(); immutable generatedContent next to the editable content; generation metadata (model, promptVersion); statusHistory; previousReportFor; safe report deletion.
-Still open from Step 1: written definitions for the four statuses (needed before Step 2); export/import backup; the project-context snapshot (deferred on purpose); an optional empty sources[] for later Slack provenance.
-Step 2, AI Project Health Assessment (THE NEXT FEATURE): recommended status or an explicit "insufficient information", with verbatim evidence checked server-side; PM confirms or overrides; never auto-applied; never defaults to On Track.
-Step 3, What's Changed: compare against the previous report and its original update. Omission must never mean "resolved". "No previous report" must be stated.
+Still open from Step 1: export/import backup; the project-context snapshot (deferred on purpose); an optional empty sources[] for later Slack provenance. The four status definitions are now written (see section 6).
+Step 2, AI Project Health Assessment: DONE (uncommitted until approved). See "AI Project Health Assessment (built)" in section 6.
+Step 3, What's Changed (THE NEXT FEATURE): compare against the previous report and its original update. Omission must never mean "resolved". "No previous report" must be stated. previousReportFor and the history helpers already exist. Decisions still needed before building it: the comparison baseline (PM-edited report, original AI output, raw update, or all) and the privacy position on sending previous reports to Gemini.
 Step 4, Slack: blocked until you decide on server-side storage and identity. The current server stores nothing, has no users and no credential storage, and "no accounts" conflicts with OAuth.
 Decisions I still need from you (from the audit):
 
@@ -263,9 +263,9 @@ Privacy of sending more text (previous reports) to Gemini.
 Whether to show illustrative assessments and comparisons in the demo.
 Slack scopes, retention and identity.
 10. Exact next steps when we resume
-Ask which you want first: (a) push the local fourth commit, (b) start Step 2, the AI Project Health Assessment, or (c) begin deployment prep once the Google terms review is done.
-If (a): run git status and git log, then push to origin/main only with explicit approval.
-If (b): first answer the open decisions in section 9: the four status definitions and whether "insufficient information" is its own state, confirmation that the AI may only recommend and never auto-apply, the evidence rules, and the privacy of sending more text to Gemini. Then design the feature (read-only), get approval, and build it with tests.
+Ask which you want first: (a) commit the AI Project Health Assessment work (after approval), (b) start Step 3, What's Changed, or (c) begin deployment prep once the Google terms review is done.
+If (a): run git status, lint, build and tests, show the file list, then commit only with approval. Push only with explicit approval.
+If (b): first answer the comparison-baseline and privacy decisions in section 9. Then design the feature read-only, get approval, and build it with tests.
 Keep every task read-only until you approve changes.
 # LATEST DEVELOPMENT UPDATE — NOVEMBER 8, 2026
 
@@ -280,11 +280,11 @@ Status AI now has a permanent automated test suite using Node's built-in test ru
 - No lockfile changes were made.
 
 Latest reported results:
-- 463 automated tests passing (258 when the test foundation was first built).
+- 568 automated tests passing (258 when the test foundation was first built).
 - 0 failing tests.
 - Lint passes.
 - Production build passes.
-- 40 of 40 headless-browser checks passed (v1 migration, report deletion, stubbed live generation).
+- 41 of 41 and 42 of 42 headless-browser checks passed (migration, deletion, stubbed live generation, health assessment and mandatory status).
 - No real Gemini API calls during automated testing or browser checks.
 
 The tests cover project management, report management, demo functionality, persistence, storage failures, API behaviour, rate limits, security headers, exports and email draft generation.
@@ -353,22 +353,47 @@ The next major product phase is Project Intelligence.
 
 Agreed sequence:
 
-1. Improve the report data model.
-2. Implement AI Project Health Assessment.
+1. Improve the report data model. (DONE)
+2. Implement AI Project Health Assessment. (DONE)
 3. Implement What's Changed.
 4. Evaluate communication integrations such as Slack and Microsoft Teams.
 
-### AI Project Health Assessment
+### AI Project Health Assessment (built)
 
-AI recommends one of the existing statuses:
-- On Track
-- At Risk
-- Blocked
-- Off Track
+Workflow (agreed and implemented):
+1. The PM submits a project update.
+2. Status AI generates the report and, in the SAME Gemini call, an internal health recommendation. There is no second AI call.
+3. The PM reviews both. Nothing is pre-selected and the previous project status is not reused.
+4. The PM either accepts the recommendation ("Accept recommendation (X)") or chooses a different status.
+5. The PM's final status is mandatory. Save Report, Copy, Email draft and Export PDF stay disabled until it is chosen, and the store itself refuses to save a generated report without one (addReport throws). The AI recommendation alone never counts as confirmation.
+6. Saving is the PM's final decision and the decision to share. There is no second approval step. The stored final status (projectStatusAtReport) is used for every later export.
 
-It must provide evidence and reasoning.
+Outcomes and definitions (also in the prompt):
+- On Track: the project is progressing as expected, with no material threat evident.
+- At Risk: an emerging issue or identified risk could affect delivery if not addressed.
+- Blocked: a current unresolved impediment is preventing a critical activity or meaningful progress.
+- Off Track: the project has materially deviated from agreed objectives, delivery expectations or timeline.
+- Insufficient Information: a separate assessment outcome, NOT a status. It can never become a project status or a stored decision status.
 
-The Project Manager confirms or overrides the recommendation. Insufficient information must remain a separate assessment outcome.
+Evidence rules (server/assessment.js, checked against exactly the text that was sent):
+- The only sources are the submitted update, the project description and the current confirmed status. The project name, audience and reporting period are not evidence.
+- Every evidence item is a quote that must appear verbatim (ignoring case, spacing and typographic quotes/dashes, minimum 8 characters) in the source it names. Unverifiable quotes are dropped and counted.
+- A status needs at least one verified quote from the update, plus an explanation. Otherwise it is downgraded to Insufficient Information, with the original suggestion kept in checks.downgradedFrom. Invalid or missing AI output also becomes Insufficient Information, never On Track.
+- Omission is never treated as resolution (prompt rule). The project-context snapshot remains deferred.
+
+Data (per live report, uncommitted until approved):
+- assessment: the AI recommendation exactly as shown (outcome, explanation, evidence, missingInformation, checks). Immutable, never edited.
+- statusDecision: {status, action, decidedAt}. action is confirmed (PM chose the recommended status), overridden (PM chose another) or no-recommendation (the AI said Insufficient Information). status equals projectStatusAtReport.
+- A changed project status goes through the existing setProjectStatus and statusHistory: source ai-confirmed when the PM accepted the recommendation, otherwise report, always naming the report. A recommendation by itself never changes any status.
+- Demo reports, sample copies, migrated v1 reports and older reports have no assessment (null), and are not affected by the store guard (it applies only to addReport).
+
+Internal vs stakeholder-facing:
+- Internal only (in the app and in browser storage): recommendation, evidence, explanation, missing information, the PM decision (confirmed or overridden), model and prompt version.
+- Stakeholder-facing (copy, PDF, email): ONLY the final status, as "Project Health: At Risk" (or On Track, Blocked, Off Track) directly under the project name. No "AI recommended", "Confirmed by Project Manager", "Pending review", reasoning or evidence. Older reports with no recorded status, and demo or sample reports, omit the line. Tests assert that none of the assessment text can appear in any export.
+
+Prompt: PROMPT_VERSION is report-prompt-2026-11-08.2 (pinned by a hash test). The provider response schema requires an assessment object. The stub (test/helpers/genai-stub.mjs) supports TEST_GENAI_ASSESSMENT (omit, or a JSON assessment) so all outcomes are tested without Gemini.
+
+Limitations: the evidence check proves a quote exists in the text, not that the conclusion is right. Sample generations and Save a Copy have no assessment. No UI lists status history yet. Exports of the assessment are intentionally unavailable.
 
 ### What's Changed
 
@@ -387,9 +412,9 @@ Exclude demo and sample reports from historical comparisons. Never assume an omi
 
 ## 7. Immediate Next Task
 
-COMPLETED (data-model task): the report data model now preserves the original submitted update, the original AI-generated report (generatedContent), the PM-edited report (content), the reporting period, the actual generation timestamp (generatedAt), the save timestamp (savedAt), the last update timestamp (updatedAt), the project status at report time, a project status history with sources, and stable project/report associations. Versioned migration 1 to 2 preserves existing data and invents nothing (unknown values are null with provenance). Generation metadata (model, promptVersion) is recorded on new live reports. Deleting a report keeps and marks its status-history entries and leaves the project status unchanged. Still on localStorage; no authentication, database or integrations were added. Verified by 463 tests, lint, build and 40 browser checks.
+COMPLETED: (1) the data-model task (versioned storage, original/edited content, timestamps, status history, generation metadata, safe deletion; see section 3 of the earlier notes) and (2) the AI Project Health Assessment with mandatory status finalisation (section 6). Still on localStorage; no authentication, database or integrations. Verified by 568 tests, lint, build and the browser checks above.
 
-NEXT FEATURE: AI Project Health Assessment (section 6). Before building it, the following are still needed from the product owner: written definitions for the four statuses, confirmation that the AI only recommends and never auto-applies, the evidence rules, and the privacy position on sending more text to Gemini. Design it read-only first, get approval, then build it with tests. Do not implement What's Changed in the same task.
+NEXT FEATURE: What's Changed (section 6). Needs the comparison-baseline decision and the privacy position on sending previous reports to Gemini. Design it read-only first, get approval, then build it with tests. Do not start Slack or Teams integrations.
 
 Deferred: project-context snapshot in the generation metadata; export/import backup; a UI that lists status history.
 

@@ -11,6 +11,9 @@ Status AI is deliberately **not** a project management platform. Projects exist 
 - **Honest AI behaviour**: the model is instructed to use only facts in the update, and to prefix anything it suggests (rather than something you stated) with "Suggested:".
 - **Projects** with a required name, start date and description (up to 500 characters), plus optional owner and reporting audience. The description is sent to the AI as background context.
 - **Project status** (On Track, At Risk, Blocked, Off Track) set by you, never invented. Where a status comes from a saved report, the source is shown.
+- **AI Project Health Assessment**: when a report is generated, the same AI call also recommends a project health status (On Track, At Risk, Blocked or Off Track) or says "Insufficient Information", which is a separate outcome and not a status. The recommendation comes with supporting evidence, an explanation and any missing information, and appears beside the generated report as internal decision support. Evidence must be verbatim quotes from the submitted update, the project description or the current confirmed status; anything the server cannot find in that text is removed, and a status with no verified quote from the update is downgraded to "Insufficient Information". The AI only recommends and never changes a status.
+- **The PM finalises the status before saving.** A generated report cannot be saved, copied, emailed or exported until the project manager has explicitly chosen a final status, either by accepting the recommendation or by choosing a different one. Nothing is pre-selected, the project's previous status is not reused, and the AI recommendation alone never counts. Choosing a status that differs from the project's current one is recorded in the project's status history (as "AI-confirmed" when the PM accepted the recommendation, otherwise as set from the report). The guard is enforced in the store as well as on screen.
+- **Internal assessment vs stakeholder output**: the AI recommendation, evidence, explanation, the PM's decision (confirmed or overridden) and the model and prompt version are stored with the report for traceability and are never exported. Copy, PDF and email show only the final status, written as "Project Health: At Risk" (or On Track, Blocked, Off Track) under the project name. Sample and demo reports carry no health line.
 - **Reporting periods** kept separate from the generation date, with validation that the end date is not before the start date.
 - **Original updates preserved** alongside every report, and never changed when a report is edited.
 - **Reports library** with All, Recent and By Project views, search, and per-report actions: open, edit, copy, export PDF, email draft, delete (with confirmation).
@@ -145,9 +148,12 @@ src/                 React app (hash-routed, no router dependency)
   Overview.jsx       Reporting snapshot
   Projects.jsx       Project directory, workspace, create/edit form, demo controls
   Reports.jsx        Reports library and report view
-  Composer.jsx       New report flow (live generation and sample generation)
+  Composer.jsx       New report flow (live generation and sample generation, mandatory final status)
+  Assessment.jsx     Internal AI health assessment panel (recommendation and PM decision)
   SaveCopy.jsx       "Save a Copy" dialog for sample and demo reports
   store.js           localStorage-backed store and actions
+  schema.js          Storage schema version, validators, migration, assessment and decision rules
+  history.js         Read-only helpers for report and status history
   demo.js            Fictional demo workspace data
   samples.js         Prepared fictional sample update and its pre-written report
   sections.js        The seven-section definition and text helpers
@@ -155,7 +161,8 @@ src/                 React app (hash-routed, no router dependency)
 server/
   index.js           Express API: POST /api/report, validation, rate limiting, errors
   limits.js          Per-IP rate limiter (with pruning) and global daily cap
-  prompt.js          System prompt and section definitions
+  prompt.js          System prompt, section definitions and PROMPT_VERSION
+  assessment.js      Checks the AI health assessment (verbatim evidence, downgrade rules)
   providers/
     index.js         Provider selection (AI_PROVIDER)
     gemini.js        Gemini implementation
@@ -192,6 +199,8 @@ A report keeps these independently:
 - If the browser cannot save (storage full or blocked, for example in a private window), a warning banner says so and success messages are replaced by a "NOT saved" warning. If saved data cannot be read, the app does not overwrite it. Data that cannot be loaded is set aside in a second storage key (`statusai.v1.set-aside`), not deleted.
 - When you generate a report, the update text, project name, project description, audience and reporting period are sent to your server and then to the Gemini API. Do not submit confidential information you are not permitted to share with that provider.
 - Demo content is entirely fictional and illustrative.
+- The health assessment sends nothing extra: it uses the project description, the current confirmed status and the update, which are already part of the generation request.
+- The assessment is stored in your browser with the report as an internal record. It is never included in copy, PDF or email output.
 - AI-generated content can contain mistakes. Review before sharing.
 
 ## Deployment notes
@@ -205,7 +214,9 @@ The server sends basic security headers (including a Content Security Policy tha
 ## Known limitations
 
 - Local-only storage; no accounts, sync or collaboration.
-- Reports do not record which AI model or prompt version produced them.
+- The health assessment is a recommendation. Its evidence check confirms that quotes really appear in your text; it does not prove that the conclusion is right. The PM owns the final status.
+- Sample reports and Save a Copy do not include a health assessment, and the store-level status requirement applies only to reports generated and saved through the normal flow.
+- Reports saved before the assessment feature have no assessment, and may have no recorded status; their exports simply omit the health line.
 - Automated tests cover the data layer and API but not the React UI (see Testing).
 - Email drafts use a `mailto:` link, so very long reports may be truncated by some email clients.
 - Free-tier Gemini capacity varies and can return temporary "busy" errors.

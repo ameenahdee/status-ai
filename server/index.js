@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { getProvider } from './providers/index.js'
 import { createRateLimiter, createDailyCap, positiveInt } from './limits.js'
 import { PROMPT_VERSION } from './prompt.js'
+import { validateAssessment, cleanProjectStatus } from './assessment.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -63,7 +64,7 @@ const liveEnabled = process.env.LIVE_GENERATION_ENABLED
 app.get('/api/health', (_req, res) => res.json({ ok: !!provider, error: providerError }))
 
 app.post('/api/report', async (req, res) => {
-  const { updates, projectName, projectDescription, audience, periodStart, periodEnd } = req.body || {}
+  const { updates, projectName, projectDescription, projectStatus, audience, periodStart, periodEnd } = req.body || {}
   const isDate = (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
   if (typeof updates !== 'string' || updates.trim().length < 10)
     return res.status(400).json({ error: 'Please enter a few lines of project updates.' })
@@ -81,20 +82,26 @@ app.post('/api/report', async (req, res) => {
       error: 'The daily limit for live report generation in this demo has been reached. Please try again tomorrow, or explore the sample report.',
     })
   try {
-    const report = await provider.generateReport({
+    const input = {
       updates: updates.trim(),
       projectName: String(projectName || '').slice(0, 120),
       projectDescription: String(projectDescription || '').trim().slice(0, 500),
+      projectStatus: cleanProjectStatus(projectStatus),
       audience: String(audience || '').slice(0, 120),
       periodStart: isDate(periodStart) ? periodStart : '',
       periodEnd: isDate(periodEnd) ? periodEnd : '',
-    })
+    }
+    // ONE provider call produces both the report and the health assessment.
+    const { assessment: rawAssessment, ...report } = await provider.generateReport(input)
+    // The assessment is checked against exactly the text that was sent; unverifiable evidence is dropped.
+    const assessment = validateAssessment(rawAssessment, input)
     // Original submission is returned untouched alongside the generated report. `generatedAt` is when the
     // provider actually produced it (server clock), so it is never confused with when the PM later saves it.
     // `model` and `promptVersion` say what produced it; `model` is null if the provider does not report one.
     res.json({
       original: updates,
       report,
+      assessment,
       generatedAt: new Date().toISOString(),
       model: typeof provider.model === 'string' && provider.model ? provider.model : null,
       promptVersion: PROMPT_VERSION,

@@ -12,6 +12,10 @@
 export const CURRENT_VERSION = 2
 export const STATUSES = ['On Track', 'At Risk', 'Blocked', 'Off Track']
 
+// A report can only be saved and shared once the PM has finalised one of the four statuses. "Not set", an empty
+// value and "Insufficient Information" are not final statuses.
+export const isFinalStatus = (s) => STATUSES.includes(s)
+
 // Who may change a project's status. An AI *recommendation* is deliberately NOT a source: only a status
 // the PM has confirmed ('ai-confirmed') or set ('manual', 'report') is ever recorded as a change.
 export const STATUS_CHANGE_SOURCES = ['manual', 'report', 'ai-confirmed']
@@ -45,7 +49,51 @@ export const validReportV2 = (r) =>
   (r.generatedAt == null || isStr(r.generatedAt)) &&
   optStr(r.title) && optStr(r.originalUpdate) && optStr(r.periodStart) && optStr(r.periodEnd) &&
   validContent(r.content) && (r.generatedContent == null || validContent(r.generatedContent)) &&
-  (r.provenance == null || isObject(r.provenance)) && validGeneration(r.generation)
+  (r.provenance == null || isObject(r.provenance)) && validGeneration(r.generation) &&
+  validAssessment(r.assessment) && validStatusDecision(r.statusDecision)
+
+// ---- project health assessment ----
+// "Insufficient Information" is an assessment outcome, NOT a project status (it can never become a project's status).
+export const INSUFFICIENT = 'Insufficient Information'
+export const ASSESSMENT_OUTCOMES = [...STATUSES, INSUFFICIENT]
+export const EVIDENCE_SOURCES = ['update', 'description', 'confirmedStatus']
+export const DECISION_ACTIONS = ['confirmed', 'overridden', 'no-recommendation']
+
+const validEvidence = (e) => isObject(e) && EVIDENCE_SOURCES.includes(e.source) && isStr(e.quote)
+
+// What the AI recommended, exactly as it was shown to the PM. Null / absent = no assessment was made.
+export const validAssessment = (a) =>
+  a == null ||
+  (isObject(a) && ASSESSMENT_OUTCOMES.includes(a.outcome) && isStr(a.explanation) &&
+    Array.isArray(a.evidence) && a.evidence.every(validEvidence) &&
+    Array.isArray(a.missingInformation) && a.missingInformation.every(isStr))
+
+// What the PM decided. `status` is the status the PM chose for the report (null = none); `action` says how that
+// relates to the AI's recommendation. Only this decision, never the recommendation, can change a project's status.
+export const validStatusDecision = (d) =>
+  d == null ||
+  (isObject(d) && (d.status == null || STATUSES.includes(d.status)) && DECISION_ACTIONS.includes(d.action) && isStr(d.decidedAt))
+
+// Keeps a well-formed assessment (as a copy) and drops anything else. Never repairs or guesses.
+export function cleanAssessment(a) {
+  if (a == null || !validAssessment(a)) return null
+  return {
+    outcome: a.outcome,
+    explanation: a.explanation,
+    evidence: a.evidence.map((e) => ({ source: e.source, quote: e.quote })),
+    missingInformation: [...a.missingInformation],
+    checks: isObject(a.checks) ? structuredClone(a.checks) : undefined,
+  }
+}
+
+// How the PM's chosen status relates to the AI's recommendation:
+//   confirmed          the AI recommended a status and the PM chose that same status
+//   overridden         the AI recommended a status and the PM chose something else (or no status)
+//   no-recommendation  the AI said "Insufficient Information", so there was nothing to confirm
+export function decisionAction(assessment, chosenStatus) {
+  if (assessment.outcome === INSUFFICIENT) return 'no-recommendation'
+  return (chosenStatus || null) === assessment.outcome ? 'confirmed' : 'overridden'
+}
 
 // What produced a live report: the AI model and the prompt version. null = not known / not applicable (see
 // `provenance.generation`). A record without the field at all is read the same way: unknown, never guessed.

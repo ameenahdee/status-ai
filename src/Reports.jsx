@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useStore, actions, getPersistence } from './store.js'
 import { navigate } from './router.js'
 import { fmtPeriod, fmtStamp, reportStamp } from './sections.js'
+import AssessmentPanel from './Assessment.jsx'
 import { ReportCard, ReportBody, ExportButtons, StatusBadge, ConfirmDialog, EmptyState, DemoBadge, Toast } from './ui.jsx'
 import { metaOf } from './exporters.js'
 import SaveCopyDialog from './SaveCopy.jsx'
@@ -131,6 +132,7 @@ export function ReportView({ id, startEditing, saved, copied }) {
             <strong>Sample report · Demo experience.</strong> Illustrative output — not generated live. Fictional content authored in advance, not produced by Gemini. Use “Save a Copy” to keep your own editable copy.
           </p>
         ) : null}
+        <AssessmentPanel assessment={report.assessment} decision={report.statusDecision} />
         <ReportBody content={content} editing={editing} onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))} />
         <details className="orig">
           <summary>Original submitted update (read-only)</summary>

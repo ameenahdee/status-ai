@@ -3,6 +3,7 @@ import { buildDemo } from './demo.js'
 import {
   CURRENT_VERSION, STATUSES, STATUS_CHANGE_SOURCES, emptyState, storedVersion, migrateV1toV2, isObject, isIsoTimestamp,
   validContent, validProject, validReportV1, validReportV2, validHistoryEntry, cleanGeneration,
+  cleanAssessment, decisionAction, isFinalStatus,
 } from './schema.js'
 
 // All MVP data lives in this browser's localStorage under one key. The stored object carries a
@@ -241,10 +242,25 @@ export const actions = {
   //   content          the current, human-reviewed version (the only one edits change)
   // and three timestamps: generatedAt (when the AI generated it), savedAt (first saved), updatedAt (last edited).
   // `generation` ({model, promptVersion}, as reported by the server) is stored as received and never inferred.
-  addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, generatedContent, generatedAt, generation, projectStatusAtReport }) {
+  //
+  // `assessment` is the AI's health recommendation, stored exactly as it was shown and never changed afterwards.
+  // `statusDecision` records what the PM chose (projectStatusAtReport) and how that relates to it. Both are
+  // null when no assessment was made. The recommendation itself never changes any project status.
+  //
+  // A newly saved report MUST carry a status the PM has finalised (one of the four statuses). This guards the store
+  // itself, not just the screen. It applies only to this path (reports the user generates and saves): demo data,
+  // sample copies (saveSampleCopy) and records already in storage are not saved through here and are unaffected.
+  addReport({ projectId, title, originalUpdate, periodStart, periodEnd, content, generatedContent, generatedAt, generation, assessment, projectStatusAtReport }) {
+    if (!isFinalStatus(projectStatusAtReport))
+      throw new Error('A report cannot be saved until the project status has been finalised (On Track, At Risk, Blocked or Off Track).')
     const generatedAtValue = isIsoTimestamp(generatedAt) ? generatedAt : null // never substituted with the save time
     const aiOutput = validContent(generatedContent) ? structuredClone(generatedContent) : null
     const generationValue = cleanGeneration(generation)
+    const assessmentValue = cleanAssessment(assessment)
+    const decidedAt = now()
+    const statusDecision = assessmentValue
+      ? { status: projectStatusAtReport || null, action: decisionAction(assessmentValue, projectStatusAtReport), decidedAt }
+      : null
     const report = {
       id: uid(),
       projectId,
@@ -260,6 +276,8 @@ export const actions = {
       projectStatusAtReport: projectStatusAtReport || null,
       generatedContent: aiOutput,
       generation: generationValue,
+      assessment: assessmentValue,
+      statusDecision,
       content: structuredClone(content),
       provenance: {
         generatedAt: generatedAtValue ? 'recorded' : 'unknown',

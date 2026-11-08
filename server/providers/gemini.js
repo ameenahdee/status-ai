@@ -13,15 +13,33 @@ const schema = {
     risks: list,
     nextSteps: list,
     executiveActionRequired: list,
+    assessment: {
+      type: Type.OBJECT,
+      properties: {
+        outcome: { type: Type.STRING, enum: ['On Track', 'At Risk', 'Blocked', 'Off Track', 'Insufficient Information'] },
+        explanation: { type: Type.STRING },
+        evidence: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: { source: { type: Type.STRING, enum: ['update', 'description', 'confirmedStatus'] }, quote: { type: Type.STRING } },
+            required: ['source', 'quote'],
+          },
+        },
+        missingInformation: list,
+      },
+      required: ['outcome', 'explanation', 'evidence', 'missingInformation'],
+    },
   },
-  required: ['title', ...SECTIONS.map((s) => s.key)],
+  required: ['title', ...SECTIONS.map((s) => s.key), 'assessment'],
 }
 
 // The project description is background context only, kept separate from the submitted update.
-export function buildPrompt({ updates, projectName, projectDescription, audience, periodStart, periodEnd }) {
+export function buildPrompt({ updates, projectName, projectDescription, projectStatus, audience, periodStart, periodEnd }) {
   const period = periodStart && periodEnd ? `${periodStart} to ${periodEnd}` : 'Not specified'
   return `Project: ${projectName || 'Not specified'}
 Project description (background context only): ${projectDescription || 'Not specified'}
+Current confirmed project status (background context only): ${projectStatus || 'Not set'}
 Audience: ${audience || 'Executive stakeholders'}
 Reporting period: ${period}
 

@@ -58,9 +58,8 @@ describe('reports', () => {
       assert.equal(r.projectStatusAtReport, 'Blocked')
     })
 
-    it('stores null (not an invented status) when no status was chosen', () => {
-      const r = store.actions.addReport(reportInput(project.id, { projectStatusAtReport: '' }))
-      assert.equal(r.projectStatusAtReport, null)
+    it('is refused when no status was chosen (see final-status.test.mjs for the full guard)', () => {
+      assert.throws(() => store.actions.addReport(reportInput(project.id, { projectStatusAtReport: '' })), /finalised/)
     })
 
     it('has not been edited when first saved', () => {

@@ -50,6 +50,8 @@ export function metaLines(meta = {}) {
   const lines = []
   if (meta.isSample) lines.push('SAMPLE REPORT – illustrative output, not generated live')
   if (meta.projectName) lines.push(`Project: ${meta.projectName}`)
+  // The PM's final status is the only health information stakeholders receive.
+  if (meta.projectHealth) lines.push(`Project Health: ${meta.projectHealth}`)
   lines.push(`Reporting period: ${fmtPeriod(meta.periodStart, meta.periodEnd)}`)
   if (!meta.isSample) {
     if (meta.generatedAt) lines.push(`Generated: ${fmtStamp(meta.generatedAt)}`)
